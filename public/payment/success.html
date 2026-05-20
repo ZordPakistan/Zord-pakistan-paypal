@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Payment Successful — ZORD Footwear</title>
+  <link rel="icon" href="/favicon.jpg" type="image/jpeg" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #0f0c1a 0%, #1a0e2e 50%, #2d1b4e 100%);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #fff;
+    }
+    .card {
+      background: rgba(255,255,255,0.05);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 24px;
+      padding: 3rem 2.5rem;
+      max-width: 480px;
+      width: 90%;
+      text-align: center;
+      animation: pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+    }
+    @keyframes pop {
+      from { opacity: 0; transform: scale(0.8); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    .icon-wrap {
+      width: 88px; height: 88px;
+      background: linear-gradient(135deg, #00c853, #69f0ae);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 1.5rem;
+      font-size: 2.5rem;
+      box-shadow: 0 0 40px rgba(0,200,83,0.4);
+    }
+    h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.75rem; }
+    .sub { color: rgba(255,255,255,0.65); font-size: 1rem; line-height: 1.6; margin-bottom: 1.5rem; }
+    .order-box {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      padding: 1rem 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .order-box .label { font-size: 0.8rem; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 1px; }
+    .order-box .value { font-size: 1.2rem; font-weight: 700; color: #69f0ae; margin-top: 4px; font-family: monospace; }
+    .spinner { display: none; font-size: 0.85rem; color: rgba(255,255,255,0.5); margin-bottom: 1rem; }
+    .btn {
+      display: inline-block;
+      padding: 0.9rem 2rem;
+      background: linear-gradient(135deg, #7c3aed, #a855f7);
+      color: #fff;
+      border-radius: 50px;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 1rem;
+      transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 4px 20px rgba(124,58,237,0.4);
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(124,58,237,0.5); }
+    .brand { font-size: 0.8rem; color: rgba(255,255,255,0.3); margin-top: 2rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon-wrap"><i class="fas fa-check"></i></div>
+    <h1>Payment Successful!</h1>
+    <p class="sub">Your payment has been confirmed. We're preparing your ZORD order right now.</p>
+    <div class="order-box" id="orderInfo" style="display:none">
+      <div class="label">Order ID</div>
+      <div class="value" id="orderId">—</div>
+    </div>
+    <p class="spinner" id="spinner"><i class="fas fa-circle-notch fa-spin"></i> Updating your order…</p>
+    <a href="/" class="btn"><i class="fas fa-home"></i>&nbsp; Back to ZORD Store</a>
+    <p class="brand">ZORD Footwear · Secure Payment by JS Bank</p>
+  </div>
+
+  <script>
+    (function () {
+      const params  = new URLSearchParams(window.location.search);
+      const orderId = params.get('orderId') || params.get('OrderIdentifier');
+      const txId    = params.get('txId');
+
+      if (orderId) {
+        document.getElementById('orderInfo').style.display = 'block';
+        document.getElementById('orderId').textContent = orderId;
+
+        // Store in sessionStorage so the React SPA can read it
+        sessionStorage.setItem('zord_last_paid_order', orderId);
+        sessionStorage.setItem('zord_payment_status', 'paid');
+        if (txId) sessionStorage.setItem('zord_tx_id', txId);
+      }
+
+      // Redirect to React SPA after 4 seconds
+      setTimeout(() => {
+        window.location.href = '/?payment=success' + (orderId ? '&orderId=' + orderId : '');
+      }, 4000);
+    })();
+  </script>
+</body>
+</html>

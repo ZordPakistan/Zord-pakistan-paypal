@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Payment Failed — ZORD Footwear</title>
+  <link rel="icon" href="/favicon.jpg" type="image/jpeg" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #1a0a0a 0%, #2e1010 50%, #1a0f0f 100%);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #fff;
+    }
+    .card {
+      background: rgba(255,255,255,0.05);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,100,100,0.15);
+      border-radius: 24px;
+      padding: 3rem 2.5rem;
+      max-width: 480px;
+      width: 90%;
+      text-align: center;
+      animation: pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+    }
+    @keyframes pop {
+      from { opacity: 0; transform: scale(0.8); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    .icon-wrap {
+      width: 88px; height: 88px;
+      background: linear-gradient(135deg, #e53935, #ef9a9a);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 1.5rem;
+      font-size: 2.5rem;
+      box-shadow: 0 0 40px rgba(229,57,53,0.4);
+    }
+    h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.75rem; }
+    .sub { color: rgba(255,255,255,0.65); font-size: 1rem; line-height: 1.6; margin-bottom: 1rem; }
+    .error-box {
+      background: rgba(229,57,53,0.12);
+      border: 1px solid rgba(229,57,53,0.3);
+      border-radius: 12px;
+      padding: 0.9rem 1.25rem;
+      margin-bottom: 1.75rem;
+      font-size: 0.9rem;
+      color: #ff8a80;
+    }
+    .reasons {
+      text-align: left;
+      background: rgba(255,255,255,0.05);
+      border-radius: 12px;
+      padding: 1rem 1.5rem;
+      margin-bottom: 2rem;
+      font-size: 0.9rem;
+      color: rgba(255,255,255,0.7);
+    }
+    .reasons h4 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.75rem; color: rgba(255,255,255,0.4); }
+    .reasons li { margin-bottom: 0.4rem; list-style: none; padding-left: 1.25rem; position: relative; }
+    .reasons li::before { content: '→'; position: absolute; left: 0; color: #ef9a9a; }
+    .btn-group { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      display: inline-block;
+      padding: 0.9rem 1.75rem;
+      border-radius: 50px;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 0.95rem;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #7c3aed, #a855f7);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(124,58,237,0.4);
+    }
+    .btn-secondary {
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    .btn:hover { transform: translateY(-2px); }
+    .brand { font-size: 0.8rem; color: rgba(255,255,255,0.3); margin-top: 2rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon-wrap"><i class="fas fa-times"></i></div>
+    <h1>Payment Failed</h1>
+    <p class="sub">Unfortunately, your payment could not be processed. No amount has been deducted.</p>
+    <div class="error-box" id="errorBox">
+      <i class="fas fa-exclamation-triangle"></i>&nbsp;
+      <span id="errorMsg">The transaction was declined or cancelled.</span>
+    </div>
+    <div class="reasons">
+      <h4>Common Reasons</h4>
+      <ul>
+        <li>Insufficient funds or card limit exceeded</li>
+        <li>Incorrect card details entered</li>
+        <li>3D Secure authentication failed</li>
+        <li>Card not enabled for online payments</li>
+        <li>Session timed out — please try again</li>
+      </ul>
+    </div>
+    <div class="btn-group">
+      <a href="/cart" class="btn btn-primary"><i class="fas fa-redo"></i>&nbsp; Try Again</a>
+      <a href="/" class="btn btn-secondary"><i class="fas fa-home"></i>&nbsp; Go to Store</a>
+    </div>
+    <p class="brand">ZORD Footwear · Secure Payment by JS Bank</p>
+  </div>
+
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const error  = params.get('error');
+      const orderId = params.get('orderId');
+
+      if (error) {
+        document.getElementById('errorMsg').textContent = decodeURIComponent(error);
+      }
+
+      if (orderId) {
+        sessionStorage.setItem('zord_last_failed_order', orderId);
+        sessionStorage.setItem('zord_payment_status', 'failed');
+      }
+    })();
+  </script>
+</body>
+</html>
