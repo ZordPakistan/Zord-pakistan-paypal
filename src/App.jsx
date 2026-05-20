@@ -692,7 +692,7 @@ function App() {
     };
 
     // Load PayPal script dynamically
-    const clientId = import.meta.env.VITE_PAYPAL_CLIENT_ID || 'sb';
+    const clientId = import.meta.env.VITE_PAYPAL_CLIENT_ID || 'AU24NnyScBcCqOp_ZZcvChPLNx7A8dfvBiLBpkPYLPx1fqk6TihOYdrV4t55IxAuP1OD6ZbQehCpD5SO';
     const scriptId = 'paypal-sdk-script';
     let script = document.getElementById(scriptId);
 
