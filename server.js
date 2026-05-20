@@ -32,11 +32,14 @@ const PAYPAL_API_BASE = PAYPAL_MODE === 'live'
  * Generate Access Token from PayPal REST API
  */
 async function getPayPalAccessToken() {
-  if (!PAYPAL_CLIENT_ID || !PAYPAL_CLIENT_SECRET) {
+  const clientId = process.env.PAYPAL_CLIENT_ID;
+  const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
     throw new Error('PayPal client credentials are not configured in environment variables.');
   }
 
-  const credentials = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`).toString('base64');
+  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
   
   const tokenRes = await fetch(`${PAYPAL_API_BASE}/v1/oauth2/token`, {
     method: 'POST',
@@ -101,7 +104,7 @@ app.post('/api/payment/paypal/create-order', async (req, res) => {
 
   } catch (err) {
     console.error('Error creating PayPal order:', err);
-    res.status(500).json({ error: err.message || 'Failed to create PayPal order' });
+    return res.status(500).json({ success: false, message: err.message || 'Failed to create PayPal order' });
   }
 });
 
@@ -161,10 +164,15 @@ app.post('/api/payment/paypal/capture-order', async (req, res) => {
 
   } catch (err) {
     console.error('Error capturing PayPal order:', err);
-    res.status(500).json({ error: err.message || 'Failed to capture PayPal order' });
+    return res.status(500).json({ success: false, message: err.message || 'Failed to capture PayPal order' });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
+
+// Export the app for Vercel Serverless Functions
+export default app;
