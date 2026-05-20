@@ -631,6 +631,7 @@ function App() {
             setIsPaymentLoading(false);
             return res.id;
           } catch (err) {
+            console.error("Full Server Error:", err);
             setIsPaymentLoading(false);
             setPaymentError(err.message);
             setToastMessage(`❌ Error: ${err.message}`);

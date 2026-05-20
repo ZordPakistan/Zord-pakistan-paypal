@@ -7,22 +7,11 @@ dotenv.config();
 
 const app = express();
 
-// Set up restricted CORS for production and local development
-const allowedOrigins = [
-  process.env.SITE_URL, // e.g., https://zordpakistan.shop
-  'http://localhost:5173', // Local Vite development
-  'http://127.0.0.1:5173'
-].filter(Boolean);
-
+// Enable open CORS for all domains to prevent preflight OPTIONS failures
 app.use(cors({
-  origin: function(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 app.use(express.json());

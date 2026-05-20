@@ -23,10 +23,16 @@ export async function createPayPalOrder({ orderId, amount }) {
       body:    JSON.stringify({ orderId, amount })
     });
 
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error("Full Server Error:", errorText, "Status:", res.status);
+      return { error: `Server Error ${res.status}: ${errorText}` };
+    }
+
     const data = await res.json();
     return data;
   } catch (err) {
-    console.error('paymentService.createPayPalOrder error:', err);
+    console.error("Full Server Error:", err);
     return { error: 'Could not connect to the payment server. Please check your internet connection.' };
   }
 }
@@ -47,10 +53,16 @@ export async function capturePayPalOrder({ paypalOrderId, orderId }) {
       body:    JSON.stringify({ paypalOrderId, orderId })
     });
 
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error("Full Server Error:", errorText, "Status:", res.status);
+      return { success: false, error: `Server Error ${res.status}: ${errorText}` };
+    }
+
     const data = await res.json();
     return data;
   } catch (err) {
-    console.error('paymentService.capturePayPalOrder error:', err);
+    console.error("Full Server Error:", err);
     return { success: false, error: err.message };
   }
 }
