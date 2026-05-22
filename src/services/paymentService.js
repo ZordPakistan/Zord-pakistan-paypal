@@ -5,7 +5,9 @@
  * The ZionPe API Key is NEVER exposed here.
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || 'https://zord-pakistan-paypal-1pav.vercel.app';
+const API_BASE = import.meta.env.DEV 
+  ? 'http://localhost:3001' 
+  : import.meta.env.VITE_API_URL || 'https://zord-pakistan-paypal1.vercel.app';
 
 /**
  * Call the backend to create a ZionPe session.
