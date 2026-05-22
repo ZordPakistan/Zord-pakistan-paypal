@@ -456,7 +456,8 @@ function App() {
       total: cart.reduce((acc, item) => acc + item.price, 0),
       customer: customerInfo,
       status: 'Pending',
-      paymentMethod: customerInfo.payment || 'COD',
+      paymentMethod: 'Cash on Delivery (COD)',
+      paymentStatus: 'Unpaid',
       timestamp: new Date().toISOString()
     };
     set(dbRef(db, `orders/${orderId}`), newOrder);
@@ -539,23 +540,13 @@ function App() {
     setPaymentError('');
     setToastMessage('🔒 Connecting to ZionPe...');
 
+    // Generate a temporary reference ID — NO order is saved to DB here.
+    // The final order will only be created by the backend webhook AFTER payment is confirmed.
     const orderId = `ORD-${Date.now()}`;
     const totalAmount = cart.reduce((a, b) => a + b.price, 0);
 
     try {
       setLastOrderId(orderId);
-      
-      const newOrder = {
-        id: orderId,
-        items: cart,
-        total: totalAmount,
-        customer: customerInfo,
-        status: 'Pending',
-        paymentMethod: 'Credit/Debit Card (ZionPe) - Pending',
-        timestamp: new Date().toISOString()
-      };
-      set(dbRef(db, `orders/${orderId}`), newOrder);
-      sendEmailNotification(newOrder);
 
       const res = await createZionPeSession({
         orderId,
@@ -1551,7 +1542,14 @@ function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(orders || []).map(order => (
+                  {(orders || []).filter(order => {
+                    // Show all COD orders
+                    if (order.paymentMethod === 'Cash on Delivery (COD)') return true;
+                    // Show online orders only if payment was confirmed
+                    if (order.paymentStatus === 'Paid') return true;
+                    // Hide any stale or incomplete online sessions
+                    return false;
+                  }).map(order => (
                     <tr key={order.id}>
                       <td>{order.id}</td>
                       <td>
