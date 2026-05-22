@@ -952,6 +952,7 @@ function App() {
   // Checkout View
   if (view === 'checkout') {
     const totalAmount = cart.reduce((a, b) => a + b.price, 0);
+    const usdAmount = (totalAmount / 280).toFixed(2);
     return (
       <div className="checkout-page animate-fade-in">
         <nav className="navbar scrolled" style={{ position: 'relative', top: 0 }}>
@@ -1062,7 +1063,17 @@ function App() {
                 <div style={{ fontSize: '12px', color: '#777', textAlign: 'left', marginTop: '-4px', marginBottom: '8px' }}>
                   Estimated delivery: 3–5 working days
                 </div>
-                <div className="order-total-row grand-total"><span>Total</span><span>Rs. {totalAmount.toLocaleString()}</span></div>
+                <div className="order-total-row grand-total">
+                  <span>Total</span>
+                  <div style={{ textAlign: 'right' }}>
+                    <span>Rs. {totalAmount.toLocaleString()}</span>
+                    {customerInfo.payment === 'Online' && (
+                      <div style={{ fontSize: '0.85rem', color: '#777', marginTop: '2px', fontWeight: 'normal' }}>
+                        (Approx. ${usdAmount} USD)
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
               {customerInfo.payment === 'Online' ? (
                 <div style={{ marginTop: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -1075,7 +1086,7 @@ function App() {
                     {isPaymentLoading ? (
                       <><i className="fas fa-spinner fa-spin"></i> Processing...</>
                     ) : (
-                      <><i className="fas fa-lock"></i> Pay securely — Rs. {totalAmount.toLocaleString()}</>
+                      <><i className="fas fa-lock"></i> Pay securely — ${usdAmount} USD</>
                     )}
                   </button>
                   {paymentError && (

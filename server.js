@@ -39,12 +39,27 @@ app.post('/api/payment/zionpe/create-session', async (req, res) => {
       throw new Error('ZIONPE_API_KEY is not configured in environment variables.');
     }
 
-    // Assuming ZionPe expects amount, currency, success_url, cancel_url, customer_email
-    // Note: This payload is an assumption based on standard payment gateways like Stripe/Paymob.
+    const pkrAmount = parseFloat(amount);
+    const usdAmount = parseFloat((pkrAmount / 280).toFixed(2));
+    console.log("Converted PKR to USD:", pkrAmount, "->", usdAmount);
+
+    // Map items to clean line_items (only essential fields — no image URLs, arrays, etc.)
+    const line_items = (items || []).map(item => ({
+      name: `${item.name} - Size ${item.size}`,
+      amount: parseFloat((item.price / 280).toFixed(2)),
+      quantity: 1
+    }));
+
+    // Build a short human-readable summary for metadata (avoids size limits)
+    const itemsSummary = (items || [])
+      .map(item => `${item.name} (Size ${item.size})`)
+      .join(', ')
+      .substring(0, 200); // Hard cap to prevent oversized metadata
+
     const payload = {
-      site_key: process.env.ZIONPE_API_KEY, // ZionPe requires site_key which is the API key
-      amount: parseFloat(amount),
-      currency: 'PKR',
+      site_key: process.env.ZIONPE_API_KEY,
+      amount: usdAmount,
+      currency: 'USD',
       order_id: orderId,
       success_url: `${req.headers.origin || 'https://zordpakistan.shop'}/order-success`,
       cancel_url: `${req.headers.origin || 'https://zordpakistan.shop'}/cart`,
@@ -54,12 +69,14 @@ app.post('/api/payment/zionpe/create-session', async (req, res) => {
         phone: customer?.phone || '00000000000',
         address: customer?.address || ''
       },
-      // Serialize full order data into metadata so the webhook can reconstruct the order
+      line_items,
+      // Lightweight metadata only — no large JSON blobs
       metadata: {
-        orderId,
-        items: JSON.stringify(items || []),
-        customer: JSON.stringify(customer || {}),
-        total: parseFloat(amount)
+        order_id: orderId,
+        items_summary: itemsSummary,
+        customer_name: (customer?.name || '').substring(0, 50),
+        customer_phone: (customer?.phone || '').substring(0, 20),
+        total_pkr: pkrAmount
       }
     };
 
