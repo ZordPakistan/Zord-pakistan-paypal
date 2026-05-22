@@ -18,123 +18,89 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3001;
 
-// PayPal configurations
-const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
-const PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET;
-const PAYPAL_MODE = process.env.PAYPAL_MODE || 'sandbox';
-const PAYPAL_EXCHANGE_RATE = parseFloat(process.env.PAYPAL_EXCHANGE_RATE || '280');
+// ZionPe configurations
+const ZIONPE_API_KEY = process.env.ZIONPE_API_KEY;
+const ZIONPE_WEBHOOK_SECRET = process.env.ZIONPE_WEBHOOK_SECRET;
 
-const PAYPAL_API_BASE = PAYPAL_MODE === 'live'
-  ? 'https://api-m.paypal.com'
-  : 'https://api-m.sandbox.paypal.com';
-
-/**
- * Generate Access Token from PayPal REST API
- */
-async function getPayPalAccessToken() {
-  const clientId = process.env.PAYPAL_CLIENT_ID;
-  const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) {
-    throw new Error('PayPal client credentials are not configured in environment variables.');
-  }
-
-  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-  
-  const tokenRes = await fetch(`${PAYPAL_API_BASE}/v1/oauth2/token`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Basic ${credentials}`,
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    body: 'grant_type=client_credentials'
-  });
-
-  if (!tokenRes.ok) {
-    const errText = await tokenRes.text();
-    throw new Error(`Failed to obtain PayPal access token: ${errText}`);
-  }
-
-  const data = await tokenRes.json();
-  return data.access_token;
-}
-
-// 1. Create PayPal Order
-app.post('/api/payment/paypal/create-order', async (req, res) => {
+// 1. Create ZionPe Checkout Session
+app.post('/api/payment/zionpe/create-session', async (req, res) => {
   try {
-    const { orderId, amount } = req.body;
+    const { orderId, amount, customer, items } = req.body;
 
     if (!orderId || !amount) {
       return res.status(400).json({ error: 'Missing orderId or amount' });
     }
 
-    // Convert PKR to USD as PayPal does not support PKR
-    const amountUSD = (parseFloat(amount) / PAYPAL_EXCHANGE_RATE).toFixed(2);
-
-    const accessToken = await getPayPalAccessToken();
-
-    const orderRes = await fetch(`${PAYPAL_API_BASE}/v2/checkout/orders`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        intent: 'CAPTURE',
-        purchase_units: [
-          {
-            reference_id: orderId,
-            description: `ZORD Footwear Order ${orderId}`,
-            amount: {
-              currency_code: 'USD',
-              value: amountUSD
-            }
-          }
-        ]
-      })
-    });
-
-    if (!orderRes.ok) {
-      const errText = await orderRes.text();
-      throw new Error(`PayPal order creation failed: ${errText}`);
+    if (!ZIONPE_API_KEY) {
+      throw new Error('ZIONPE_API_KEY is not configured in environment variables.');
     }
 
-    const orderData = await orderRes.json();
-    res.json({ id: orderData.id });
+    // Assuming ZionPe expects amount, currency, success_url, cancel_url, customer_email
+    // Note: This payload is an assumption based on standard payment gateways like Stripe/Paymob.
+    const payload = {
+      amount: parseFloat(amount),
+      currency: 'PKR',
+      order_id: orderId,
+      success_url: `${req.headers.origin || 'https://zordpakistan.shop'}/order-success`,
+      cancel_url: `${req.headers.origin || 'https://zordpakistan.shop'}/cart`,
+      customer: {
+        name: customer?.name || 'Customer',
+        email: customer?.email || 'customer@zordpakistan.shop',
+        phone: customer?.phone || '00000000000',
+        address: customer?.address || ''
+      },
+      metadata: { orderId }
+    };
+
+    const sessionRes = await fetch('https://zionpe.com/api/checkout/sessions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${ZIONPE_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!sessionRes.ok) {
+      const errText = await sessionRes.text();
+      throw new Error(`ZionPe session creation failed: ${errText}`);
+    }
+
+    const sessionData = await sessionRes.json();
+    
+    // Assuming ZionPe returns { checkout_url: '...' } or { url: '...' }
+    const checkout_url = sessionData.checkout_url || sessionData.url;
+    
+    if (!checkout_url) {
+      throw new Error('checkout_url not found in ZionPe response');
+    }
+
+    res.json({ checkout_url });
 
   } catch (err) {
-    console.error('Error creating PayPal order:', err);
-    return res.status(500).json({ success: false, message: err.message || 'Failed to create PayPal order' });
+    console.error('Error creating ZionPe session:', err);
+    return res.status(500).json({ success: false, message: err.message || 'Failed to create ZionPe session' });
   }
 });
 
-// 2. Capture PayPal Order and Sync with Firebase
-app.post('/api/payment/paypal/capture-order', async (req, res) => {
+// 2. ZionPe Webhook
+app.post('/api/payment/zionpe/webhook', async (req, res) => {
   try {
-    const { paypalOrderId, orderId } = req.body;
+    const event = req.body;
+    
+    // Validate webhook if a secret is provided
+    // This is a placeholder validation logic, adapt to ZionPe's actual webhook verification method
+    const signature = req.headers['x-zionpe-signature'];
+    
+    // Typically you'd check:
+    // if (ZIONPE_WEBHOOK_SECRET && !isValidSignature(payload, signature, secret)) return res.status(401);
 
-    if (!paypalOrderId || !orderId) {
-      return res.status(400).json({ error: 'Missing paypalOrderId or orderId' });
-    }
+    // Assuming the event structure has { event_type: 'payment.success', data: { order_id: '...' } }
+    // We handle success cases to update Firebase
+    const isSuccessEvent = event.event_type === 'payment.success' || event.status === 'success' || event.status === 'Paid';
+    const orderId = event.data?.order_id || event.order_id || event.metadata?.orderId;
 
-    const accessToken = await getPayPalAccessToken();
-
-    const captureRes = await fetch(`${PAYPAL_API_BASE}/v2/checkout/orders/${paypalOrderId}/capture`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!captureRes.ok) {
-      const errText = await captureRes.text();
-      throw new Error(`PayPal order capture failed: ${errText}`);
-    }
-
-    const captureData = await captureRes.json();
-
-    if (captureData.status === 'COMPLETED') {
+    if (isSuccessEvent && orderId) {
       // Update order status in Firebase database via REST API
       const dbUrl = process.env.FIREBASE_DB_URL;
       if (dbUrl) {
@@ -145,7 +111,7 @@ app.post('/api/payment/paypal/capture-order', async (req, res) => {
             body: JSON.stringify({
               paymentStatus: 'Paid',
               status: 'Processing',
-              paypalOrderId: paypalOrderId
+              paymentMethod: 'Credit/Debit Card (ZionPe)'
             })
           });
 
@@ -156,15 +122,13 @@ app.post('/api/payment/paypal/capture-order', async (req, res) => {
           console.error('Error connecting to Firebase REST API:', dbErr);
         }
       }
-
-      res.json({ success: true });
-    } else {
-      res.status(400).json({ error: `Payment was not completed. Status: ${captureData.status}` });
     }
 
+    res.json({ received: true });
+
   } catch (err) {
-    console.error('Error capturing PayPal order:', err);
-    return res.status(500).json({ success: false, message: err.message || 'Failed to capture PayPal order' });
+    console.error('Error handling ZionPe webhook:', err);
+    return res.status(500).json({ success: false, message: err.message || 'Failed to handle webhook' });
   }
 });
 

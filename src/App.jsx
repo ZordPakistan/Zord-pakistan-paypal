@@ -14,7 +14,7 @@ import { ref as dbRef, onValue, set, remove } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import imageCompression from 'browser-image-compression';
 import { trackEvent } from './utils/analytics';
-import { createPayPalOrder, capturePayPalOrder } from './services/paymentService';
+import { createZionPeSession } from './services/paymentService';
 
 
 const calculateDiscount = (price, originalPrice) => {
@@ -524,201 +524,63 @@ function App() {
   const [isPaymentLoading, setIsPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState('');
 
-  // ── PayPal Checkout Integration ──────────────────────────────────────────
-  const customerInfoRef = useRef(customerInfo);
-  const cartRef = useRef(cart);
-  const lastOrderIdRef = useRef(lastOrderId);
+  const handleZionPeCheckout = async (e) => {
+    e.preventDefault();
+    
+    const phoneDigits = customerInfo.phone.replace(/\D/g, '');
 
-  useEffect(() => {
-    customerInfoRef.current = customerInfo;
-  }, [customerInfo]);
+    if (!customerInfo.name.trim()) return setToastMessage('⚠️ Please enter your full name.');
+    if (phoneDigits.length < 11) return setToastMessage('⚠️ Please enter a valid 11-digit phone number.');
+    if (!customerInfo.city || !customerInfo.city.trim()) return setToastMessage('⚠️ Please enter your city.');
+    if (!customerInfo.address.trim()) return setToastMessage('⚠️ Please enter your delivery address.');
+    if (cart.length === 0) return setToastMessage('⚠️ Your cart is empty.');
 
-  useEffect(() => {
-    cartRef.current = cart;
-  }, [cart]);
+    setIsPaymentLoading(true);
+    setPaymentError('');
+    setToastMessage('🔒 Connecting to ZionPe...');
 
-  useEffect(() => {
-    lastOrderIdRef.current = lastOrderId;
-  }, [lastOrderId]);
+    const orderId = `ORD-${Date.now()}`;
+    const totalAmount = cart.reduce((a, b) => a + b.price, 0);
 
-  useEffect(() => {
-    if (view !== 'checkout' || customerInfo.payment !== 'Online') return;
-
-    let isMounted = true;
-    const paypalContainerId = 'paypal-button-container';
-
-    const loadAndRenderPayPal = () => {
-      const container = document.getElementById(paypalContainerId);
-      if (!container || !isMounted) return;
-
-      container.innerHTML = ''; // Clear previous button instance
-
-      if (!window.paypal) {
-        console.error('PayPal SDK not loaded');
-        return;
-      }
-
-      window.paypal.Buttons({
-        style: {
-          layout: 'vertical',
-          color:  'gold',
-          shape:  'rect',
-          label:  'paypal'
-        },
-        onClick: (data, actions) => {
-          // Perform validation before starting PayPal checkout
-          const currentCustomer = customerInfoRef.current;
-          const phoneDigits = currentCustomer.phone.replace(/\D/g, '');
-
-          if (!currentCustomer.name.trim()) {
-            setToastMessage('⚠️ Please enter your full name.');
-            return actions.reject();
-          }
-          if (phoneDigits.length < 11) {
-            setToastMessage('⚠️ Please enter a valid 11-digit phone number.');
-            return actions.reject();
-          }
-          if (!currentCustomer.city || !currentCustomer.city.trim()) {
-            setToastMessage('⚠️ Please enter your city.');
-            return actions.reject();
-          }
-          if (!currentCustomer.address.trim()) {
-            setToastMessage('⚠️ Please enter your delivery address.');
-            return actions.reject();
-          }
-          if (cartRef.current.length === 0) {
-            setToastMessage('⚠️ Your cart is empty.');
-            return actions.reject();
-          }
-
-          return actions.resolve();
-        },
-        createOrder: async () => {
-          setIsPaymentLoading(true);
-          setPaymentError('');
-          setToastMessage('🔒 Connecting to PayPal...');
-
-          const currentCart = cartRef.current;
-          const currentCustomer = customerInfoRef.current;
-          const totalAmount = currentCart.reduce((a, b) => a + b.price, 0);
-          const orderId = `ORD-${Date.now()}`;
-
-          // 1. Create a pending order in Firebase first
-          const pendingOrder = {
-            id: orderId,
-            items: currentCart,
-            total: totalAmount,
-            customer: currentCustomer,
-            status: 'Pending',
-            paymentMethod: 'Online (PayPal)',
-            paymentStatus: 'Awaiting',
-            timestamp: new Date().toISOString()
-          };
-
-          try {
-            await set(dbRef(db, `orders/${orderId}`), pendingOrder);
-            setLastOrderId(orderId);
-            lastOrderIdRef.current = orderId; // Update ref immediately
-
-            // 2. Call backend to create PayPal order
-            const res = await createPayPalOrder({ orderId, amount: totalAmount });
-            if (res.error) {
-              throw new Error(res.error);
-            }
-            if (!res.id) {
-              throw new Error('Failed to create order on PayPal');
-            }
-            setIsPaymentLoading(false);
-            return res.id;
-          } catch (err) {
-            console.error("Full Server Error:", err);
-            setIsPaymentLoading(false);
-            setPaymentError(err.message);
-            setToastMessage(`❌ Error: ${err.message}`);
-            return Promise.reject(err);
-          }
-        },
-        onApprove: async (data, actions) => {
-          setIsPaymentLoading(true);
-          setToastMessage('🔒 Verifying payment with PayPal...');
-
-          try {
-            const res = await capturePayPalOrder({
-              paypalOrderId: data.orderID,
-              orderId: lastOrderIdRef.current
-            });
-
-            setIsPaymentLoading(false);
-
-            if (res.success) {
-              const currentCart = cartRef.current;
-              const currentCustomer = customerInfoRef.current;
-              const totalAmount = currentCart.reduce((a, b) => a + b.price, 0);
-
-              trackEvent('purchase', {
-                transaction_id: lastOrderIdRef.current,
-                value: totalAmount,
-                currency: 'PKR',
-                items: currentCart
-              });
-
-              sendEmailNotification({
-                id: lastOrderIdRef.current,
-                customer: currentCustomer,
-                total: totalAmount,
-                items: currentCart
-              });
-
-              setCart([]);
-              setView('order-success');
-              window.scrollTo(0, 0);
-              setToastMessage('🎉 Payment received! Order placed successfully.');
-            } else {
-              throw new Error(res.error || 'Payment verification failed');
-            }
-          } catch (err) {
-            setIsPaymentLoading(false);
-            setPaymentError(err.message);
-            setToastMessage(`❌ Payment capture failed: ${err.message}`);
-          }
-        },
-        onError: (err) => {
-          console.error('PayPal Error:', err);
-          setIsPaymentLoading(false);
-          setPaymentError('PayPal encountered an error. Please try again or choose Cash on Delivery.');
-          setToastMessage('❌ PayPal error occurred.');
-        }
-      }).render(`#${paypalContainerId}`);
-    };
-
-    // Load PayPal script dynamically
-    const clientId = import.meta.env.VITE_PAYPAL_CLIENT_ID || 'AU24NnyScBcCqOp_ZZcvChPLNx7A8dfvBiLBpkPYLPx1fqk6TihOYdrV4t55IxAuP1OD6ZbQehCpD5SO';
-    const scriptId = 'paypal-sdk-script';
-    let script = document.getElementById(scriptId);
-
-    if (!script) {
-      script = document.createElement('script');
-      script.id = scriptId;
-      script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=USD`;
-      script.async = true;
-      script.onload = () => {
-        if (isMounted) loadAndRenderPayPal();
+    try {
+      setLastOrderId(orderId);
+      
+      const newOrder = {
+        id: orderId,
+        items: cart,
+        total: totalAmount,
+        customer: customerInfo,
+        status: 'Pending',
+        paymentMethod: 'Credit/Debit Card (ZionPe) - Pending',
+        timestamp: new Date().toISOString()
       };
-      document.body.appendChild(script);
-    } else {
-      if (window.paypal) {
-        loadAndRenderPayPal();
-      } else {
-        script.onload = () => {
-          if (isMounted) loadAndRenderPayPal();
-        };
-      }
-    }
+      set(dbRef(db, `orders/${orderId}`), newOrder);
+      sendEmailNotification(newOrder);
 
-    return () => {
-      isMounted = false;
-    };
-  }, [view, customerInfo.payment]);
+      const res = await createZionPeSession({
+        orderId,
+        amount: totalAmount,
+        customer: customerInfo,
+        items: cart
+      });
+
+      if (res.error) {
+        throw new Error(res.error);
+      }
+      
+      if (res.checkout_url) {
+        window.location.href = res.checkout_url;
+      } else {
+        throw new Error('Failed to get checkout URL from ZionPe');
+      }
+
+    } catch (err) {
+      console.error("ZionPe Error:", err);
+      setIsPaymentLoading(false);
+      setPaymentError(err.message);
+      setToastMessage(`❌ Error: ${err.message}`);
+    }
+  };
 
 
   const [newCollection, setNewCollection] = useState({ name: '', image: '' });
@@ -1162,35 +1024,19 @@ function App() {
                       <p>Pay when you receive</p>
                     </div>
                   </label>
-                  <label className={`payment-option ${customerInfo.payment === 'Online' ? 'selected' : ''}`} style={customerInfo.payment === 'Online' ? { borderColor: '#0070ba', background: 'rgba(0,112,186,0.08)' } : {}}>
+                  <label className={`payment-option ${customerInfo.payment === 'Online' ? 'selected' : ''}`}>
                     <input type="radio" name="payment" value="Online" checked={customerInfo.payment === 'Online'} onChange={e => { setCustomerInfo({ ...customerInfo, payment: e.target.value }); setPaymentError(''); }} />
-                    <i className="fab fa-paypal" style={{ color: customerInfo.payment === 'Online' ? '#0070ba' : undefined }}></i>
+                    <i className="fas fa-credit-card"></i>
                     <div>
-                      <strong>PayPal or Credit/Debit Card</strong>
-                      <p>Pay securely via PayPal portal</p>
+                      <strong>Credit/Debit Card</strong>
+                      <p>Pay securely via ZionPe</p>
                     </div>
                     <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center', fontSize: '1.6rem' }}>
                       <i className="fab fa-cc-visa" style={{ color: '#1a1f71' }}></i>
                       <i className="fab fa-cc-mastercard" style={{ color: '#eb001b' }}></i>
-                      <i className="fab fa-paypal" style={{ color: '#003087' }}></i>
                     </div>
                   </label>
                 </div>
-
-                {/* PayPal USD Conversion Notice */}
-                {customerInfo.payment === 'Online' && (
-                  <div style={{ marginTop: '1rem', background: 'rgba(0,112,186,0.06)', border: '1px solid rgba(0,112,186,0.2)', borderRadius: '12px', padding: '1rem 1.25rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
-                      <i className="fab fa-paypal" style={{ color: '#003087', fontSize: '1.4rem', marginTop: '3px' }}></i>
-                      <div>
-                        <strong style={{ fontSize: '0.9rem' }}>💳 USD Payment Conversion</strong>
-                        <p style={{ fontSize: '0.82rem', color: '#555', marginTop: '2px' }}>
-                          PayPal does not support PKR directly. Your total of <strong>Rs. {totalAmount.toLocaleString()} PKR</strong> will be converted to approx <strong>${(totalAmount / parseFloat(import.meta.env.VITE_PAYPAL_EXCHANGE_RATE || '280')).toFixed(2)} USD</strong> (Exchange Rate: 1 USD = {import.meta.env.VITE_PAYPAL_EXCHANGE_RATE || '280'} PKR).
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </form>
             </div>
 
@@ -1229,13 +1075,18 @@ function App() {
               </div>
               {customerInfo.payment === 'Online' ? (
                 <div style={{ marginTop: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <div id="paypal-button-container" style={{ minHeight: '120px', width: '100%' }}></div>
-                  {isPaymentLoading && (
-                    <div style={{ textAlign: 'center', fontSize: '0.9rem', color: '#666', margin: '0.5rem 0' }}>
-                      <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }}></i>
-                      Processing... Please wait.
-                    </div>
-                  )}
+                  <button
+                    type="button"
+                    onClick={handleZionPeCheckout}
+                    className="checkout-place-order-btn"
+                    disabled={isPaymentLoading}
+                  >
+                    {isPaymentLoading ? (
+                      <><i className="fas fa-spinner fa-spin"></i> Processing...</>
+                    ) : (
+                      <><i className="fas fa-lock"></i> Pay securely — Rs. {totalAmount.toLocaleString()}</>
+                    )}
+                  </button>
                   {paymentError && (
                     <div style={{ padding: '0.7rem 1rem', background: 'rgba(229,57,53,0.08)', border: '1px solid rgba(229,57,53,0.25)', borderRadius: '8px', fontSize: '0.85rem', color: '#c62828', textAlign: 'left' }}>
                       <i className="fas fa-exclamation-triangle"></i> {paymentError}
