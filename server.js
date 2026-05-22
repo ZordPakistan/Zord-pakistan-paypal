@@ -42,6 +42,7 @@ app.post('/api/payment/zionpe/create-session', async (req, res) => {
     // Assuming ZionPe expects amount, currency, success_url, cancel_url, customer_email
     // Note: This payload is an assumption based on standard payment gateways like Stripe/Paymob.
     const payload = {
+      site_key: process.env.ZIONPE_SITE_KEY, // ADDED: ZionPe requires a site_key
       amount: parseFloat(amount),
       currency: 'PKR',
       order_id: orderId,
