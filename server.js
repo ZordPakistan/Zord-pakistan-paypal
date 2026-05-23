@@ -361,7 +361,16 @@ app.post('/api/payment/zionpe/webhook', async (req, res) => {
     }
 
     const isSuccessEvent = event.event_type === 'payment.success' || event.status === 'success' || event.status === 'Paid';
-    const isFailedEvent = event.event_type === 'payment.failed' || event.event_type === 'payment_intent.payment_failed' || event.status === 'failed' || event.status === 'Declined';
+    const isFailedEvent = 
+      event.event_type === 'payment.failed' || 
+      event.event_type === 'payment_intent.payment_failed' || 
+      event.event_type === 'charge.failed' ||
+      event.status === 'failed' || 
+      event.status === 'Declined' || 
+      event.status === 'declined' ||
+      (event.event_type && typeof event.event_type === 'string' && (event.event_type.toLowerCase().includes('fail') || event.event_type.toLowerCase().includes('decline'))) ||
+      (event.status && typeof event.status === 'string' && (event.status.toLowerCase().includes('fail') || event.status.toLowerCase().includes('decline')));
+      
     const orderId = event.data?.order_id || event.order_id || event.metadata?.orderId || event.metadata?.order_id;
 
     if (orderId) {
@@ -402,7 +411,7 @@ app.post('/api/payment/zionpe/webhook', async (req, res) => {
               }
             }
           } else if (isFailedEvent) {
-            const failureReason = event.data?.failure_reason || event.failure_reason || event.data?.message || 'Payment failed or declined';
+            const failureReason = event.data?.failure_reason || event.failure_reason || event.data?.message || event.message || event.data?.reason || 'Payment failed or declined';
             const updates = {
               status: 'Payment Failed',
               paymentStatus: 'Failed',
