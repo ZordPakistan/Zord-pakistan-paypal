@@ -9,8 +9,18 @@ dotenv.config();
 const app = express();
 
 // Enable open CORS for all domains to prevent preflight OPTIONS failures
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'https://zord-pakistan-paypal1.vercel.app'
+];
 app.use(cors({
-  origin: '*',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like curl or server-to-server)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('Not allowed by CORS'), false);
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -22,6 +32,10 @@ app.use(express.json({
 }));
 
 const PORT = process.env.PORT || 3001;
+
+// Production frontend URL — used for payment redirect callbacks.
+// Falls back to the live Vercel deployment so redirects always land correctly.
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://zord-pakistan-paypal1.vercel.app';
 
 // ZionPe configurations are read dynamically from process.env inside the routes
 
@@ -61,8 +75,8 @@ app.post('/api/payment/zionpe/create-session', async (req, res) => {
       amount: usdAmount,
       currency: 'USD',
       order_id: orderId,
-      success_url: `${req.headers.origin || 'https://zordpakistan.shop'}/order-success`,
-      cancel_url: `${req.headers.origin || 'https://zordpakistan.shop'}/cart`,
+      success_url: `${req.headers.origin || FRONTEND_URL}/order-success`,
+      cancel_url: `${req.headers.origin || FRONTEND_URL}/cart`,
       customer: {
         name: customer?.name || 'Customer',
         email: customer?.email || 'customer@zordpakistan.shop',
