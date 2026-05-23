@@ -160,6 +160,7 @@ async function sendFailureAlertEmail({ orderId, orderData, failureReason }) {
   const senderEmail = process.env.SENDER_EMAIL || 'orders@zordpakistan.shop';
   const customerName = orderData.customer?.name || 'Customer';
   const customerPhone = orderData.customer?.phone || 'N/A';
+  const usdAmount = parseFloat((orderData.total / 280).toFixed(2));
   
   const html = `
   <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;border:1px solid #fee2e2;">
@@ -171,7 +172,7 @@ async function sendFailureAlertEmail({ orderId, orderData, failureReason }) {
       <ul style="list-style:none;padding:0;margin:20px 0;font-size:14px;color:#1a1a1a;">
         <li style="margin-bottom:8px;"><strong>Customer Name:</strong> ${customerName}</li>
         <li style="margin-bottom:8px;"><strong>Phone:</strong> ${customerPhone}</li>
-        <li style="margin-bottom:8px;"><strong>Attempted Amount:</strong> PKR ${orderData.total}</li>
+        <li style="margin-bottom:8px;"><strong>Attempted Amount:</strong> $${usdAmount} USD (PKR ${orderData.total})</li>
         <li style="margin-bottom:8px;"><strong>Reason:</strong> ${failureReason}</li>
       </ul>
       <p style="font-size:14px;color:#555;">Please follow up with the customer to assist them.</p>
@@ -182,7 +183,7 @@ async function sendFailureAlertEmail({ orderId, orderData, failureReason }) {
     const result = await resend.emails.send({
       from: `Zord Alerts <${senderEmail}>`,
       to: adminEmail,
-      subject: `❌ Payment Failed Alert #${orderId} — PKR ${orderData.total}`,
+      subject: `❌ Payment Failed Alert #${orderId} — $${usdAmount} USD`,
       html
     });
     console.log(`📧 Failed payment alert sent to ${adminEmail}`, result);
