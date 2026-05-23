@@ -9,7 +9,7 @@ const API_BASE = (() => {
   const host = window.location.hostname;
   return (host === 'localhost' || host === '127.0.0.1')
     ? 'http://localhost:3001'
-    : 'https://zord-pakistan-paypal1.vercel.app';
+    : ''; // Use relative path for unified Vercel deployment
 })();
 
 /**
