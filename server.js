@@ -152,7 +152,134 @@ app.post('/api/payment/zionpe/create-session', async (req, res) => {
   }
 });
 
-// 2. ZionPe Webhook
+// ─── Reusable Email Helper ────────────────────────────────────────────────────
+async function sendOrderEmails({ orderId, orderData, paymentMethod }) {
+  if (!process.env.RESEND_API_KEY) {
+    console.log('⚠️  RESEND_API_KEY not set — skipping emails.');
+    return;
+  }
+
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const adminEmail = process.env.ADMIN_EMAIL || 'zordofficialpk@gmail.com';
+  const senderEmail = process.env.SENDER_EMAIL || 'orders@zordpakistan.shop';
+  const customerEmail = orderData.customer?.email;
+  const customerName = orderData.customer?.name || 'Customer';
+  const paymentLabel = paymentMethod || orderData.paymentMethod || 'N/A';
+  const paymentStatusLabel = orderData.paymentStatus === 'Paid' ? 'Paid' : 'Pay on Delivery';
+
+  const itemsRowsHtml = (orderData.items || []).map(item =>
+    `<tr>
+      <td style="padding:10px 12px;border-bottom:1px solid #eee;font-size:14px;">${item.name}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #eee;font-size:14px;text-align:center;">${item.size}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #eee;font-size:14px;text-align:right;">PKR ${item.price}</td>
+    </tr>`
+  ).join('');
+
+  const customerHtml = `
+  <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+    <div style="background:#000;padding:24px 32px;text-align:center;">
+      <h1 style="color:#fff;margin:0;font-size:22px;letter-spacing:2px;">ZORD PAKISTAN</h1>
+    </div>
+    <div style="padding:32px;">
+      <h2 style="color:#1a1a1a;margin:0 0 8px;">Order Confirmed ✓</h2>
+      <p style="color:#555;font-size:14px;margin:0 0 24px;">Hi ${customerName}, thank you for shopping with us!</p>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+        <tr style="background:#f8f8f8;">
+          <td style="padding:8px 12px;font-weight:600;font-size:13px;color:#888;">ITEM</td>
+          <td style="padding:8px 12px;font-weight:600;font-size:13px;color:#888;text-align:center;">SIZE</td>
+          <td style="padding:8px 12px;font-weight:600;font-size:13px;color:#888;text-align:right;">PRICE</td>
+        </tr>
+        ${itemsRowsHtml}
+      </table>
+      <div style="background:#f8f8f8;padding:16px;border-radius:8px;margin-bottom:24px;">
+        <p style="margin:0 0 4px;font-size:16px;font-weight:700;color:#1a1a1a;">Total: PKR ${orderData.total}</p>
+        <p style="margin:0;font-size:13px;color:#888;">Payment: ${paymentLabel} • ${paymentStatusLabel}</p>
+      </div>
+      <div style="margin-bottom:24px;">
+        <p style="font-size:13px;font-weight:600;color:#888;margin:0 0 4px;">SHIPPING TO</p>
+        <p style="font-size:14px;color:#333;margin:0;">${customerName}</p>
+        <p style="font-size:14px;color:#333;margin:0;">${orderData.customer?.phone || ''}</p>
+        <p style="font-size:14px;color:#333;margin:0;">${orderData.customer?.address || 'N/A'}</p>
+      </div>
+      <p style="font-size:14px;color:#555;">We are preparing your order and will notify you once it ships. If you have any questions, reply to this email.</p>
+    </div>
+    <div style="background:#f8f8f8;padding:16px 32px;text-align:center;">
+      <p style="font-size:12px;color:#aaa;margin:0;">Order #${orderId} • ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+      <p style="font-size:12px;color:#aaa;margin:4px 0 0;">© Zord Pakistan — zordpakistan.shop</p>
+    </div>
+  </div>`;
+
+  const isCOD = paymentLabel.toLowerCase().includes('cod') || paymentLabel.toLowerCase().includes('cash');
+  const adminBannerColor = isCOD ? '#d97706' : '#16a34a';
+  const adminBannerEmoji = isCOD ? '📦' : '💰';
+  const adminBannerLabel = isCOD ? 'New COD Order' : 'New Paid Order';
+
+  const adminHtml = `
+  <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+    <div style="background:${adminBannerColor};padding:18px 32px;">
+      <h1 style="color:#fff;margin:0;font-size:18px;">${adminBannerEmoji} ${adminBannerLabel} — #${orderId}</h1>
+    </div>
+    <div style="padding:24px 32px;">
+      <div style="margin-bottom:20px;">
+        <table style="width:100%;border-collapse:collapse;">
+          <tr>
+            <td style="padding:4px 0;vertical-align:top;">
+              <p style="font-size:12px;font-weight:600;color:#888;margin:0 0 2px;">CUSTOMER</p>
+              <p style="font-size:14px;color:#1a1a1a;margin:0;">${customerName}</p>
+            </td>
+            <td style="padding:4px 0;vertical-align:top;">
+              <p style="font-size:12px;font-weight:600;color:#888;margin:0 0 2px;">EMAIL</p>
+              <p style="font-size:14px;color:#1a1a1a;margin:0;">${customerEmail || 'N/A'}</p>
+            </td>
+            <td style="padding:4px 0;vertical-align:top;">
+              <p style="font-size:12px;font-weight:600;color:#888;margin:0 0 2px;">PHONE</p>
+              <p style="font-size:14px;color:#1a1a1a;margin:0;">${orderData.customer?.phone || 'N/A'}</p>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div style="margin-bottom:20px;">
+        <p style="font-size:12px;font-weight:600;color:#888;margin:0 0 2px;">ADDRESS</p>
+        <p style="font-size:14px;color:#1a1a1a;margin:0;">${orderData.customer?.address || 'N/A'}</p>
+      </div>
+      <div style="margin-bottom:20px;">
+        <p style="font-size:12px;font-weight:600;color:#888;margin:0 0 2px;">PAYMENT</p>
+        <p style="font-size:14px;color:#1a1a1a;margin:0;">${paymentLabel} — ${paymentStatusLabel}</p>
+      </div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+        <tr style="background:${isCOD ? '#fffbeb' : '#f0fdf4'};">
+          <td style="padding:8px 12px;font-weight:600;font-size:13px;color:#888;">ITEM</td>
+          <td style="padding:8px 12px;font-weight:600;font-size:13px;color:#888;text-align:center;">SIZE</td>
+          <td style="padding:8px 12px;font-weight:600;font-size:13px;color:#888;text-align:right;">PRICE</td>
+        </tr>
+        ${itemsRowsHtml}
+      </table>
+      <p style="font-size:18px;font-weight:700;color:${adminBannerColor};margin:0;">Total: PKR ${orderData.total}</p>
+    </div>
+  </div>`;
+
+  // Send Customer Email (only if we have their email)
+  if (customerEmail) {
+    resend.emails.send({
+      from: `Zord Pakistan <${senderEmail}>`,
+      to: customerEmail,
+      subject: `Order Confirmed — #${orderId}`,
+      html: customerHtml
+    }).then(() => console.log(`📧 Customer email sent to ${customerEmail}`))
+      .catch(err => console.error('Customer email failed:', err));
+  }
+
+  // Send Admin Email
+  resend.emails.send({
+    from: `Zord Orders <${senderEmail}>`,
+    to: adminEmail,
+    subject: `${adminBannerEmoji} ${adminBannerLabel} #${orderId} — PKR ${orderData.total}`,
+    html: adminHtml
+  }).then(() => console.log(`📧 Admin email sent to ${adminEmail}`))
+    .catch(err => console.error('Admin email failed:', err));
+}
+
+// ─── 2. ZionPe Webhook ───────────────────────────────────────────────────────
 app.post('/api/payment/zionpe/webhook', async (req, res) => {
   try {
     const event = req.body;
@@ -160,29 +287,30 @@ app.post('/api/payment/zionpe/webhook', async (req, res) => {
     // Validate webhook securely
     const signature = req.headers['x-zionpe-signature'];
     
-    const webhookSecret = process.env.ZIONPE_WEBHOOK_SECRET;
+    const webhookSecret = process.env.ZIONPE_WEBHOOK_SECRET?.trim();
     
     if (webhookSecret) {
       if (!signature) {
         return res.status(401).json({ success: false, message: 'Missing signature' });
       }
 
-      // Compute HMAC SHA256 signature using the raw body
+      // On Vercel, req.rawBody might be undefined because Vercel parses the body before Express does.
+      // In that case, we fallback to stringifying req.body.
+      const payload = req.rawBody ? req.rawBody : JSON.stringify(req.body);
+
+      // Compute HMAC SHA256 signature
       const expectedSignature = crypto
         .createHmac('sha256', webhookSecret)
-        .update(req.rawBody)
+        .update(payload)
         .digest('hex');
 
       // Compare signatures
-      // Note: If ZionPe uses a specific signature format (like Stripe's t=...,v1=...), this logic may need adjusting.
       if (signature !== expectedSignature) {
         console.error('Webhook signature verification failed.', { expectedSignature, signature });
         return res.status(401).json({ success: false, message: 'Invalid signature' });
       }
     }
 
-    // Assuming the event structure has { event_type: 'payment.success', data: { order_id: '...' } }
-    // We handle success cases to create the final confirmed order in Firebase
     const isSuccessEvent = event.event_type === 'payment.success' || event.status === 'success' || event.status === 'Paid';
     const isFailedEvent = event.event_type === 'payment.failed' || event.event_type === 'payment_intent.payment_failed' || event.status === 'failed' || event.status === 'Declined';
     const orderId = event.data?.order_id || event.order_id || event.metadata?.orderId || event.metadata?.order_id;
@@ -207,115 +335,17 @@ app.post('/api/payment/zionpe/webhook', async (req, res) => {
             } else {
               console.log(`✅ Order ${orderId} successfully marked as Paid in Firebase.`);
               
-              // Send emails
+              // Fetch full order and send emails
               try {
                 const orderRes = await fetch(`${dbUrl}/orders/${orderId}.json`);
                 if (orderRes.ok) {
                   const orderData = await orderRes.json();
-                  if (orderData && process.env.RESEND_API_KEY) {
-                    const resend = new Resend(process.env.RESEND_API_KEY);
-                    const adminEmail = process.env.ADMIN_EMAIL || 'zordofficialpk@gmail.com';
-                    const senderEmail = process.env.SENDER_EMAIL || 'orders@zordpakistan.shop';
-                    const customerEmail = orderData.customer?.email;
-                    const customerName = orderData.customer?.name || 'Customer';
-
-                    const itemsRowsHtml = (orderData.items || []).map(item =>
-                      `<tr>
-                        <td style="padding:10px 12px;border-bottom:1px solid #eee;font-size:14px;">${item.name}</td>
-                        <td style="padding:10px 12px;border-bottom:1px solid #eee;font-size:14px;text-align:center;">${item.size}</td>
-                        <td style="padding:10px 12px;border-bottom:1px solid #eee;font-size:14px;text-align:right;">PKR ${item.price}</td>
-                      </tr>`
-                    ).join('');
-
-                    const customerHtml = `
-                    <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
-                      <div style="background:#000;padding:24px 32px;text-align:center;">
-                        <h1 style="color:#fff;margin:0;font-size:22px;letter-spacing:2px;">ZORD PAKISTAN</h1>
-                      </div>
-                      <div style="padding:32px;">
-                        <h2 style="color:#1a1a1a;margin:0 0 8px;">Order Confirmed ✓</h2>
-                        <p style="color:#555;font-size:14px;margin:0 0 24px;">Hi ${customerName}, thank you for shopping with us!</p>
-                        <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
-                          <tr style="background:#f8f8f8;">
-                            <td style="padding:8px 12px;font-weight:600;font-size:13px;color:#888;">ITEM</td>
-                            <td style="padding:8px 12px;font-weight:600;font-size:13px;color:#888;text-align:center;">SIZE</td>
-                            <td style="padding:8px 12px;font-weight:600;font-size:13px;color:#888;text-align:right;">PRICE</td>
-                          </tr>
-                          ${itemsRowsHtml}
-                        </table>
-                        <div style="background:#f8f8f8;padding:16px;border-radius:8px;margin-bottom:24px;">
-                          <p style="margin:0 0 4px;font-size:16px;font-weight:700;color:#1a1a1a;">Total: PKR ${orderData.total}</p>
-                          <p style="margin:0;font-size:13px;color:#888;">Payment: Online Card (ZionPe) • Paid</p>
-                        </div>
-                        <div style="margin-bottom:24px;">
-                          <p style="font-size:13px;font-weight:600;color:#888;margin:0 0 4px;">SHIPPING TO</p>
-                          <p style="font-size:14px;color:#333;margin:0;">${customerName}</p>
-                          <p style="font-size:14px;color:#333;margin:0;">${orderData.customer?.phone || ''}</p>
-                          <p style="font-size:14px;color:#333;margin:0;">${orderData.customer?.address || 'N/A'}</p>
-                        </div>
-                        <p style="font-size:14px;color:#555;">We are preparing your order and will notify you once it ships. If you have any questions, reply to this email.</p>
-                      </div>
-                      <div style="background:#f8f8f8;padding:16px 32px;text-align:center;">
-                        <p style="font-size:12px;color:#aaa;margin:0;">Order #${orderId} • ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
-                        <p style="font-size:12px;color:#aaa;margin:4px 0 0;">© Zord Pakistan — zordpakistan.shop</p>
-                      </div>
-                    </div>`;
-
-                    const adminHtml = `
-                    <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
-                      <div style="background:#16a34a;padding:18px 32px;">
-                        <h1 style="color:#fff;margin:0;font-size:18px;">💰 New Paid Order — #${orderId}</h1>
-                      </div>
-                      <div style="padding:24px 32px;">
-                        <div style="display:flex;gap:32px;margin-bottom:20px;">
-                          <div>
-                            <p style="font-size:12px;font-weight:600;color:#888;margin:0 0 2px;">CUSTOMER</p>
-                            <p style="font-size:14px;color:#1a1a1a;margin:0;">${customerName}</p>
-                          </div>
-                          <div>
-                            <p style="font-size:12px;font-weight:600;color:#888;margin:0 0 2px;">EMAIL</p>
-                            <p style="font-size:14px;color:#1a1a1a;margin:0;">${customerEmail || 'N/A'}</p>
-                          </div>
-                          <div>
-                            <p style="font-size:12px;font-weight:600;color:#888;margin:0 0 2px;">PHONE</p>
-                            <p style="font-size:14px;color:#1a1a1a;margin:0;">${orderData.customer?.phone || 'N/A'}</p>
-                          </div>
-                        </div>
-                        <div style="margin-bottom:20px;">
-                          <p style="font-size:12px;font-weight:600;color:#888;margin:0 0 2px;">ADDRESS</p>
-                          <p style="font-size:14px;color:#1a1a1a;margin:0;">${orderData.customer?.address || 'N/A'}</p>
-                        </div>
-                        <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
-                          <tr style="background:#f0fdf4;">
-                            <td style="padding:8px 12px;font-weight:600;font-size:13px;color:#888;">ITEM</td>
-                            <td style="padding:8px 12px;font-weight:600;font-size:13px;color:#888;text-align:center;">SIZE</td>
-                            <td style="padding:8px 12px;font-weight:600;font-size:13px;color:#888;text-align:right;">PRICE</td>
-                          </tr>
-                          ${itemsRowsHtml}
-                        </table>
-                        <p style="font-size:18px;font-weight:700;color:#16a34a;margin:0;">Total: PKR ${orderData.total}</p>
-                      </div>
-                    </div>`;
-
-                    // Send Customer Confirmation Email
-                    if (customerEmail) {
-                      resend.emails.send({
-                        from: `Zord Pakistan <${senderEmail}>`,
-                        to: customerEmail,
-                        subject: `Order Confirmed — #${orderId}`,
-                        html: customerHtml
-                      }).then(() => console.log(`📧 Customer email sent to ${customerEmail}`))
-                        .catch(err => console.error('Customer email failed:', err));
-                    }
-
-                    // Send Admin Notification Email
-                    resend.emails.send({
-                      from: `Zord Orders <${senderEmail}>`,
-                      to: adminEmail,
-                      subject: `💰 New Order #${orderId} — PKR ${orderData.total}`,
-                      html: adminHtml
-                    }).then(() => console.log(`📧 Admin email sent to ${adminEmail}`))
-                      .catch(err => console.error('Admin email failed:', err));
+                  if (orderData) {
+                    await sendOrderEmails({
+                      orderId,
+                      orderData,
+                      paymentMethod: 'Online Card (ZionPe)'
+                    });
                   }
                 }
               } catch (emailErr) {
@@ -355,6 +385,29 @@ app.post('/api/payment/zionpe/webhook', async (req, res) => {
   }
 });
 
+// ─── 3. COD Order Email Notification ─────────────────────────────────────────
+app.post('/api/order/notify', async (req, res) => {
+  try {
+    const { orderId, orderData } = req.body;
+
+    if (!orderId || !orderData) {
+      return res.status(400).json({ error: 'Missing orderId or orderData' });
+    }
+
+    await sendOrderEmails({
+      orderId,
+      orderData,
+      paymentMethod: orderData.paymentMethod || 'Cash on Delivery (COD)'
+    });
+
+    res.json({ success: true, message: 'Notification emails queued.' });
+
+  } catch (err) {
+    console.error('Error sending COD notification emails:', err);
+    return res.status(500).json({ success: false, message: err.message || 'Failed to send notification emails' });
+  }
+});
+
 if (process.env.NODE_ENV !== 'production') {
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
@@ -363,3 +416,4 @@ if (process.env.NODE_ENV !== 'production') {
 
 // Export the app for Vercel Serverless Functions
 export default app;
+
