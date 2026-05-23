@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
 import crypto from 'crypto';
+import { Resend } from 'resend';
 
 dotenv.config();
 
@@ -205,6 +206,56 @@ app.post('/api/payment/zionpe/webhook', async (req, res) => {
               console.error('Firebase DB update success error:', await firebaseRes.text());
             } else {
               console.log(`✅ Order ${orderId} successfully marked as Paid in Firebase.`);
+              
+              // Send emails
+              try {
+                const orderRes = await fetch(`${dbUrl}/orders/${orderId}.json`);
+                if (orderRes.ok) {
+                  const orderData = await orderRes.json();
+                  if (orderData && process.env.RESEND_API_KEY) {
+                    const resend = new Resend(process.env.RESEND_API_KEY);
+                    const adminEmail = process.env.ADMIN_EMAIL || 'admin@zordpakistan.shop';
+                    const senderEmail = process.env.SENDER_EMAIL || 'orders@zordpakistan.shop';
+                    const customerEmail = orderData.customer?.email || 'customer@zordpakistan.shop';
+                    
+                    const itemsListHtml = (orderData.items || []).map(item => 
+                      `<li>${item.name} (Size: ${item.size}) - PKR ${item.price}</li>`
+                    ).join('');
+
+                    // Send Customer Confirmation Email
+                    resend.emails.send({
+                      from: `Zord Pakistan <${senderEmail}>`,
+                      to: customerEmail,
+                      subject: `Order Confirmation - #${orderId}`,
+                      html: `<h1>Thank you for your order!</h1>
+                             <p>Hi ${orderData.customer?.name || 'Customer'},</p>
+                             <p>Your payment was successful and your order is now processing.</p>
+                             <h3>Order Details:</h3>
+                             <ul>${itemsListHtml}</ul>
+                             <p><strong>Total:</strong> PKR ${orderData.total}</p>
+                             <p>Shipping to: ${orderData.customer?.address || 'N/A'}</p>
+                             <p>We will notify you once it ships.</p>`
+                    }).catch(err => console.error("Customer email failed:", err));
+
+                    // Send Admin Notification Email
+                    resend.emails.send({
+                      from: `Zord System <${senderEmail}>`,
+                      to: adminEmail,
+                      subject: `New Order Received! - #${orderId}`,
+                      html: `<h1>New Order Paid</h1>
+                             <p><strong>Order ID:</strong> ${orderId}</p>
+                             <p><strong>Customer:</strong> ${orderData.customer?.name} (${customerEmail})</p>
+                             <p><strong>Phone:</strong> ${orderData.customer?.phone}</p>
+                             <p><strong>Address:</strong> ${orderData.customer?.address}</p>
+                             <h3>Items:</h3>
+                             <ul>${itemsListHtml}</ul>
+                             <p><strong>Total:</strong> PKR ${orderData.total}</p>`
+                    }).catch(err => console.error("Admin email failed:", err));
+                  }
+                }
+              } catch (emailErr) {
+                console.error("Error sending emails:", emailErr);
+              }
             }
           } else if (isFailedEvent) {
             const failureReason = event.data?.failure_reason || event.failure_reason || event.data?.message || 'Payment failed or declined';
