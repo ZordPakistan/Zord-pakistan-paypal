@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import emailjs from '@emailjs/browser';
+// Email notifications are handled by the backend via Resend (/api/order/notify)
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import WhatsAppButton from './components/WhatsAppButton';
 import TrustBar from './components/TrustBar';
@@ -437,36 +437,44 @@ function App() {
     setCart(prev => prev.filter(item => item.cartId !== cartId));
   };
 
-  const sendEmailNotification = (order) => {
-    // NOTE: You need to create an account at emailjs.com to get these IDs
-    const serviceId = 'service_d5g2dmv';
-    const templateId = 'template_5ztalco';
-    const publicKey = 'AkNHqN4Eyi7XxdtC5';
+  const sendOrderNotification = async (order) => {
+    // Call our backend /api/order/notify endpoint which uses Resend
+    // to send professional HTML emails to both customer and admin.
+    const API_BASE = (() => {
+      const host = window.location.hostname;
+      return (host === 'localhost' || host === '127.0.0.1')
+        ? 'http://localhost:3001'
+        : '';
+    })();
 
-    const templateParams = {
-      order_id: order.id,
-      customer_name: order.customer.name,
-      customer_phone: order.customer.phone,
-      customer_address: order.customer.address,
-      order_total: `Rs. ${order.total.toLocaleString()}`,
-      order_items: order.items.map(item => `${item.name} (Size: ${item.size})`).join(', ')
-    };
-
-    emailjs.send(serviceId, templateId, templateParams, publicKey)
-      .then((result) => {
-        console.log('Email successfully sent!', result.text);
-      }, (error) => {
-        console.error('Email failed to send...', error.text);
+    try {
+      const res = await fetch(`${API_BASE}/api/order/notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: order.id,
+          orderData: order
+        })
       });
+      if (res.ok) {
+        console.log('📧 Order notification emails sent via Resend.');
+      } else {
+        console.error('Email notification failed:', await res.text());
+      }
+    } catch (err) {
+      // Non-blocking — order was already placed, email is best-effort
+      console.error('Email notification request failed:', err);
+    }
   };
 
   const placeOrder = (customerInfo) => {
-    // Basic validation for phone number (should be at least 11 digits for Pakistan)
+    // Validate required fields (same checks as ZionPe flow)
+    if (!customerInfo.name.trim()) { setToastMessage('⚠️ Please enter your full name.'); return; }
     const phoneDigits = customerInfo.phone.replace(/\D/g, '');
-    if (phoneDigits.length < 11) {
-      setToastMessage("⚠️ Please enter a valid 11-digit phone number.");
-      return;
-    }
+    if (phoneDigits.length < 11) { setToastMessage("⚠️ Please enter a valid 11-digit phone number."); return; }
+    if (!customerInfo.city || !customerInfo.city.trim()) { setToastMessage('⚠️ Please enter your city.'); return; }
+    if (!customerInfo.address.trim()) { setToastMessage('⚠️ Please enter your delivery address.'); return; }
+    if (cart.length === 0) { setToastMessage('⚠️ Your cart is empty.'); return; }
 
     const orderId = `ORD-${Date.now()}`;
     const newOrder = {
@@ -480,7 +488,7 @@ function App() {
       timestamp: new Date().toISOString()
     };
     set(dbRef(db, `orders/${orderId}`), newOrder);
-    sendEmailNotification(newOrder); // Send email alert to admin
+    sendOrderNotification(newOrder); // Send email notification via Resend (admin + customer)
     trackEvent('purchase', { transaction_id: orderId, value: newOrder.total, currency: 'PKR', items: cart });
     setLastOrderId(orderId);
     setCart([]);
@@ -540,7 +548,7 @@ function App() {
   const [newImageAsset, setNewImageAsset] = useState('');
   const [newProduct, setNewProduct] = useState({ name: '', price: '', originalPrice: '', saleEndDate: '', category: '', image: '/images/hero_clean.png', isNewArrival: false });
   const [selectedFooterPage, setSelectedFooterPage] = useState('');
-  const [customerInfo, setCustomerInfo] = useState({ name: '', phone: '', address: '', payment: 'COD' });
+  const [customerInfo, setCustomerInfo] = useState({ name: '', email: '', phone: '', address: '', payment: 'COD' });
   const [isPaymentLoading, setIsPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState('');
 
@@ -1001,10 +1009,14 @@ function App() {
               <div className="checkout-section-label">
                 <i className="fas fa-map-marker-alt"></i> Delivery Information
               </div>
-              <form className="checkout-form-new" onSubmit={(e) => { e.preventDefault(); placeOrder(customerInfo); }}>
+              <form className="checkout-form-new" onSubmit={(e) => { e.preventDefault(); }}>
                 <div className="form-field">
                   <label>Full Name</label>
                   <input type="text" name="name" autoComplete="name" placeholder="e.g. Ali Hassan" value={customerInfo.name} onChange={e => setCustomerInfo({ ...customerInfo, name: e.target.value })} required />
+                </div>
+                <div className="form-field">
+                  <label>Email <span style={{ color: '#999', fontWeight: '400' }}>(for order updates)</span></label>
+                  <input type="email" name="email" autoComplete="email" placeholder="e.g. ali@email.com" value={customerInfo.email} onChange={e => setCustomerInfo({ ...customerInfo, email: e.target.value })} />
                 </div>
                 <div className="form-field">
                   <label>Phone Number</label>

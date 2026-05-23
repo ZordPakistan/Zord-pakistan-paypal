@@ -199,7 +199,7 @@ async function sendOrderEmails({ orderId, orderData, paymentMethod }) {
         <p style="font-size:13px;font-weight:600;color:#888;margin:0 0 4px;">SHIPPING TO</p>
         <p style="font-size:14px;color:#333;margin:0;">${customerName}</p>
         <p style="font-size:14px;color:#333;margin:0;">${orderData.customer?.phone || ''}</p>
-        <p style="font-size:14px;color:#333;margin:0;">${orderData.customer?.address || 'N/A'}</p>
+        <p style="font-size:14px;color:#333;margin:0;">${orderData.customer?.city ? orderData.customer.city + ', ' : ''}${orderData.customer?.address || 'N/A'}</p>
       </div>
       <p style="font-size:14px;color:#555;">We are preparing your order and will notify you once it ships. If you have any questions, reply to this email.</p>
     </div>
@@ -240,7 +240,7 @@ async function sendOrderEmails({ orderId, orderData, paymentMethod }) {
       </div>
       <div style="margin-bottom:20px;">
         <p style="font-size:12px;font-weight:600;color:#888;margin:0 0 2px;">ADDRESS</p>
-        <p style="font-size:14px;color:#1a1a1a;margin:0;">${orderData.customer?.address || 'N/A'}</p>
+        <p style="font-size:14px;color:#1a1a1a;margin:0;">${orderData.customer?.city ? orderData.customer.city + ', ' : ''}${orderData.customer?.address || 'N/A'}</p>
       </div>
       <div style="margin-bottom:20px;">
         <p style="font-size:12px;font-weight:600;color:#888;margin:0 0 2px;">PAYMENT</p>
