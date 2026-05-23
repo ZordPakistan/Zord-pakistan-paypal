@@ -214,47 +214,112 @@ app.post('/api/payment/zionpe/webhook', async (req, res) => {
                   const orderData = await orderRes.json();
                   if (orderData && process.env.RESEND_API_KEY) {
                     const resend = new Resend(process.env.RESEND_API_KEY);
-                    const adminEmail = process.env.ADMIN_EMAIL || 'admin@zordpakistan.shop';
+                    const adminEmail = process.env.ADMIN_EMAIL || 'zordofficialpk@gmail.com';
                     const senderEmail = process.env.SENDER_EMAIL || 'orders@zordpakistan.shop';
-                    const customerEmail = orderData.customer?.email || 'customer@zordpakistan.shop';
-                    
-                    const itemsListHtml = (orderData.items || []).map(item => 
-                      `<li>${item.name} (Size: ${item.size}) - PKR ${item.price}</li>`
+                    const customerEmail = orderData.customer?.email;
+                    const customerName = orderData.customer?.name || 'Customer';
+
+                    const itemsRowsHtml = (orderData.items || []).map(item =>
+                      `<tr>
+                        <td style="padding:10px 12px;border-bottom:1px solid #eee;font-size:14px;">${item.name}</td>
+                        <td style="padding:10px 12px;border-bottom:1px solid #eee;font-size:14px;text-align:center;">${item.size}</td>
+                        <td style="padding:10px 12px;border-bottom:1px solid #eee;font-size:14px;text-align:right;">PKR ${item.price}</td>
+                      </tr>`
                     ).join('');
 
+                    const customerHtml = `
+                    <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+                      <div style="background:#000;padding:24px 32px;text-align:center;">
+                        <h1 style="color:#fff;margin:0;font-size:22px;letter-spacing:2px;">ZORD PAKISTAN</h1>
+                      </div>
+                      <div style="padding:32px;">
+                        <h2 style="color:#1a1a1a;margin:0 0 8px;">Order Confirmed ✓</h2>
+                        <p style="color:#555;font-size:14px;margin:0 0 24px;">Hi ${customerName}, thank you for shopping with us!</p>
+                        <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+                          <tr style="background:#f8f8f8;">
+                            <td style="padding:8px 12px;font-weight:600;font-size:13px;color:#888;">ITEM</td>
+                            <td style="padding:8px 12px;font-weight:600;font-size:13px;color:#888;text-align:center;">SIZE</td>
+                            <td style="padding:8px 12px;font-weight:600;font-size:13px;color:#888;text-align:right;">PRICE</td>
+                          </tr>
+                          ${itemsRowsHtml}
+                        </table>
+                        <div style="background:#f8f8f8;padding:16px;border-radius:8px;margin-bottom:24px;">
+                          <p style="margin:0 0 4px;font-size:16px;font-weight:700;color:#1a1a1a;">Total: PKR ${orderData.total}</p>
+                          <p style="margin:0;font-size:13px;color:#888;">Payment: Online Card (ZionPe) • Paid</p>
+                        </div>
+                        <div style="margin-bottom:24px;">
+                          <p style="font-size:13px;font-weight:600;color:#888;margin:0 0 4px;">SHIPPING TO</p>
+                          <p style="font-size:14px;color:#333;margin:0;">${customerName}</p>
+                          <p style="font-size:14px;color:#333;margin:0;">${orderData.customer?.phone || ''}</p>
+                          <p style="font-size:14px;color:#333;margin:0;">${orderData.customer?.address || 'N/A'}</p>
+                        </div>
+                        <p style="font-size:14px;color:#555;">We are preparing your order and will notify you once it ships. If you have any questions, reply to this email.</p>
+                      </div>
+                      <div style="background:#f8f8f8;padding:16px 32px;text-align:center;">
+                        <p style="font-size:12px;color:#aaa;margin:0;">Order #${orderId} • ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                        <p style="font-size:12px;color:#aaa;margin:4px 0 0;">© Zord Pakistan — zordpakistan.shop</p>
+                      </div>
+                    </div>`;
+
+                    const adminHtml = `
+                    <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+                      <div style="background:#16a34a;padding:18px 32px;">
+                        <h1 style="color:#fff;margin:0;font-size:18px;">💰 New Paid Order — #${orderId}</h1>
+                      </div>
+                      <div style="padding:24px 32px;">
+                        <div style="display:flex;gap:32px;margin-bottom:20px;">
+                          <div>
+                            <p style="font-size:12px;font-weight:600;color:#888;margin:0 0 2px;">CUSTOMER</p>
+                            <p style="font-size:14px;color:#1a1a1a;margin:0;">${customerName}</p>
+                          </div>
+                          <div>
+                            <p style="font-size:12px;font-weight:600;color:#888;margin:0 0 2px;">EMAIL</p>
+                            <p style="font-size:14px;color:#1a1a1a;margin:0;">${customerEmail || 'N/A'}</p>
+                          </div>
+                          <div>
+                            <p style="font-size:12px;font-weight:600;color:#888;margin:0 0 2px;">PHONE</p>
+                            <p style="font-size:14px;color:#1a1a1a;margin:0;">${orderData.customer?.phone || 'N/A'}</p>
+                          </div>
+                        </div>
+                        <div style="margin-bottom:20px;">
+                          <p style="font-size:12px;font-weight:600;color:#888;margin:0 0 2px;">ADDRESS</p>
+                          <p style="font-size:14px;color:#1a1a1a;margin:0;">${orderData.customer?.address || 'N/A'}</p>
+                        </div>
+                        <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+                          <tr style="background:#f0fdf4;">
+                            <td style="padding:8px 12px;font-weight:600;font-size:13px;color:#888;">ITEM</td>
+                            <td style="padding:8px 12px;font-weight:600;font-size:13px;color:#888;text-align:center;">SIZE</td>
+                            <td style="padding:8px 12px;font-weight:600;font-size:13px;color:#888;text-align:right;">PRICE</td>
+                          </tr>
+                          ${itemsRowsHtml}
+                        </table>
+                        <p style="font-size:18px;font-weight:700;color:#16a34a;margin:0;">Total: PKR ${orderData.total}</p>
+                      </div>
+                    </div>`;
+
                     // Send Customer Confirmation Email
-                    resend.emails.send({
-                      from: `Zord Pakistan <${senderEmail}>`,
-                      to: customerEmail,
-                      subject: `Order Confirmation - #${orderId}`,
-                      html: `<h1>Thank you for your order!</h1>
-                             <p>Hi ${orderData.customer?.name || 'Customer'},</p>
-                             <p>Your payment was successful and your order is now processing.</p>
-                             <h3>Order Details:</h3>
-                             <ul>${itemsListHtml}</ul>
-                             <p><strong>Total:</strong> PKR ${orderData.total}</p>
-                             <p>Shipping to: ${orderData.customer?.address || 'N/A'}</p>
-                             <p>We will notify you once it ships.</p>`
-                    }).catch(err => console.error("Customer email failed:", err));
+                    if (customerEmail) {
+                      resend.emails.send({
+                        from: `Zord Pakistan <${senderEmail}>`,
+                        to: customerEmail,
+                        subject: `Order Confirmed — #${orderId}`,
+                        html: customerHtml
+                      }).then(() => console.log(`📧 Customer email sent to ${customerEmail}`))
+                        .catch(err => console.error('Customer email failed:', err));
+                    }
 
                     // Send Admin Notification Email
                     resend.emails.send({
-                      from: `Zord System <${senderEmail}>`,
+                      from: `Zord Orders <${senderEmail}>`,
                       to: adminEmail,
-                      subject: `New Order Received! - #${orderId}`,
-                      html: `<h1>New Order Paid</h1>
-                             <p><strong>Order ID:</strong> ${orderId}</p>
-                             <p><strong>Customer:</strong> ${orderData.customer?.name} (${customerEmail})</p>
-                             <p><strong>Phone:</strong> ${orderData.customer?.phone}</p>
-                             <p><strong>Address:</strong> ${orderData.customer?.address}</p>
-                             <h3>Items:</h3>
-                             <ul>${itemsListHtml}</ul>
-                             <p><strong>Total:</strong> PKR ${orderData.total}</p>`
-                    }).catch(err => console.error("Admin email failed:", err));
+                      subject: `💰 New Order #${orderId} — PKR ${orderData.total}`,
+                      html: adminHtml
+                    }).then(() => console.log(`📧 Admin email sent to ${adminEmail}`))
+                      .catch(err => console.error('Admin email failed:', err));
                   }
                 }
               } catch (emailErr) {
-                console.error("Error sending emails:", emailErr);
+                console.error('Error sending order emails:', emailErr);
               }
             }
           } else if (isFailedEvent) {
