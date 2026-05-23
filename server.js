@@ -13,7 +13,8 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
   'https://zord-pakistan-paypal1.vercel.app',
-  'https://zordpakistan.shop'
+  'https://zordpakistan.shop',
+  'https://www.zordpakistan.shop'
 ];
 app.use(cors({
   origin: (origin, callback) => {
