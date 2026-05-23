@@ -260,23 +260,31 @@ async function sendOrderEmails({ orderId, orderData, paymentMethod }) {
 
   // Send Customer Email (only if we have their email)
   if (customerEmail) {
-    resend.emails.send({
-      from: `Zord Pakistan <${senderEmail}>`,
-      to: customerEmail,
-      subject: `Order Confirmed — #${orderId}`,
-      html: customerHtml
-    }).then(() => console.log(`📧 Customer email sent to ${customerEmail}`))
-      .catch(err => console.error('Customer email failed:', err));
+    try {
+      const customerResult = await resend.emails.send({
+        from: `Zord Pakistan <${senderEmail}>`,
+        to: customerEmail,
+        subject: `Order Confirmed — #${orderId}`,
+        html: customerHtml
+      });
+      console.log(`📧 Customer email sent to ${customerEmail}`, customerResult);
+    } catch (err) {
+      console.error('Customer email failed:', err);
+    }
   }
 
   // Send Admin Email
-  resend.emails.send({
-    from: `Zord Orders <${senderEmail}>`,
-    to: adminEmail,
-    subject: `${adminBannerEmoji} ${adminBannerLabel} #${orderId} — PKR ${orderData.total}`,
-    html: adminHtml
-  }).then(() => console.log(`📧 Admin email sent to ${adminEmail}`))
-    .catch(err => console.error('Admin email failed:', err));
+  try {
+    const adminResult = await resend.emails.send({
+      from: `Zord Orders <${senderEmail}>`,
+      to: adminEmail,
+      subject: `${adminBannerEmoji} ${adminBannerLabel} #${orderId} — PKR ${orderData.total}`,
+      html: adminHtml
+    });
+    console.log(`📧 Admin email sent to ${adminEmail}`, adminResult);
+  } catch (err) {
+    console.error('Admin email failed:', err);
+  }
 }
 
 // ─── 2. ZionPe Webhook ───────────────────────────────────────────────────────
@@ -387,12 +395,16 @@ app.post('/api/payment/zionpe/webhook', async (req, res) => {
 
 // ─── 3. COD Order Email Notification ─────────────────────────────────────────
 app.post('/api/order/notify', async (req, res) => {
+  console.log('📨 /api/order/notify hit — orderId:', req.body?.orderId);
   try {
     const { orderId, orderData } = req.body;
 
     if (!orderId || !orderData) {
+      console.error('❌ /api/order/notify — Missing orderId or orderData');
       return res.status(400).json({ error: 'Missing orderId or orderData' });
     }
+
+    console.log('📧 Sending emails for order', orderId, '| RESEND_API_KEY set:', !!process.env.RESEND_API_KEY);
 
     await sendOrderEmails({
       orderId,
@@ -400,10 +412,11 @@ app.post('/api/order/notify', async (req, res) => {
       paymentMethod: orderData.paymentMethod || 'Cash on Delivery (COD)'
     });
 
-    res.json({ success: true, message: 'Notification emails queued.' });
+    console.log('✅ /api/order/notify — emails sent successfully for', orderId);
+    res.json({ success: true, message: 'Notification emails sent.' });
 
   } catch (err) {
-    console.error('Error sending COD notification emails:', err);
+    console.error('❌ Error in /api/order/notify:', err);
     return res.status(500).json({ success: false, message: err.message || 'Failed to send notification emails' });
   }
 });
