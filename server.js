@@ -152,6 +152,45 @@ app.post('/api/payment/zionpe/create-session', async (req, res) => {
   }
 });
 
+// ─── Failed Payment Email Helper ─────────────────────────────────────────────
+async function sendFailureAlertEmail({ orderId, orderData, failureReason }) {
+  if (!process.env.RESEND_API_KEY) return;
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const adminEmail = process.env.ADMIN_EMAIL || 'zordofficialpk@gmail.com';
+  const senderEmail = process.env.SENDER_EMAIL || 'orders@zordpakistan.shop';
+  const customerName = orderData.customer?.name || 'Customer';
+  const customerPhone = orderData.customer?.phone || 'N/A';
+  
+  const html = `
+  <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;border:1px solid #fee2e2;">
+    <div style="background:#dc2626;padding:18px 32px;">
+      <h1 style="color:#fff;margin:0;font-size:18px;">❌ Payment Failed Alert — #${orderId}</h1>
+    </div>
+    <div style="padding:24px 32px;">
+      <p style="font-size:16px;color:#333;">A transaction has failed on ZionPe.</p>
+      <ul style="list-style:none;padding:0;margin:20px 0;font-size:14px;color:#1a1a1a;">
+        <li style="margin-bottom:8px;"><strong>Customer Name:</strong> ${customerName}</li>
+        <li style="margin-bottom:8px;"><strong>Phone:</strong> ${customerPhone}</li>
+        <li style="margin-bottom:8px;"><strong>Attempted Amount:</strong> PKR ${orderData.total}</li>
+        <li style="margin-bottom:8px;"><strong>Reason:</strong> ${failureReason}</li>
+      </ul>
+      <p style="font-size:14px;color:#555;">Please follow up with the customer to assist them.</p>
+    </div>
+  </div>`;
+
+  try {
+    const result = await resend.emails.send({
+      from: `Zord Alerts <${senderEmail}>`,
+      to: adminEmail,
+      subject: `❌ Payment Failed Alert #${orderId} — PKR ${orderData.total}`,
+      html
+    });
+    console.log(`📧 Failed payment alert sent to ${adminEmail}`, result);
+  } catch (err) {
+    console.error('Failed payment alert email error:', err);
+  }
+}
+
 // ─── Reusable Email Helper ────────────────────────────────────────────────────
 async function sendOrderEmails({ orderId, orderData, paymentMethod }) {
   if (!process.env.RESEND_API_KEY) {
@@ -363,7 +402,7 @@ app.post('/api/payment/zionpe/webhook', async (req, res) => {
           } else if (isFailedEvent) {
             const failureReason = event.data?.failure_reason || event.failure_reason || event.data?.message || 'Payment failed or declined';
             const updates = {
-              status: 'Failed',
+              status: 'Payment Failed',
               paymentStatus: 'Failed',
               failure_reason: failureReason,
               timestamp: new Date().toISOString()
@@ -376,7 +415,20 @@ app.post('/api/payment/zionpe/webhook', async (req, res) => {
             if (!firebaseRes.ok) {
               console.error('Firebase DB update failure error:', await firebaseRes.text());
             } else {
-              console.log(`❌ Order ${orderId} marked as Failed in Firebase. Reason: ${failureReason}`);
+              console.log(`❌ Order ${orderId} marked as Payment Failed in Firebase. Reason: ${failureReason}`);
+              
+              // Fetch full order to get customer details and amount for the alert email
+              try {
+                const orderRes = await fetch(`${dbUrl}/orders/${orderId}.json`);
+                if (orderRes.ok) {
+                  const orderData = await orderRes.json();
+                  if (orderData) {
+                    await sendFailureAlertEmail({ orderId, orderData, failureReason });
+                  }
+                }
+              } catch (err) {
+                 console.error('Error sending failed payment email alert:', err);
+              }
             }
           }
         } catch (dbErr) {
