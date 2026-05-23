@@ -934,7 +934,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  margin-bottom: 1.25rem;
+  margin-bottom: 0.25rem;
 }
 
 .order-total-row {
@@ -955,7 +955,7 @@
 
 .checkout-place-order-btn {
   width: 100%;
-  padding: 1rem;
+  padding: 0.8rem;
   background: linear-gradient(135deg, #4A1A3E, #7a2860);
   color: #fff;
   border: none;

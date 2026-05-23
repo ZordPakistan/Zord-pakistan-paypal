@@ -117,6 +117,30 @@ app.post('/api/payment/zionpe/create-session', async (req, res) => {
       throw new Error('checkout_url not found in ZionPe response');
     }
 
+    // Save pending order to Firebase
+    const dbUrl = process.env.FIREBASE_DB_URL;
+    if (dbUrl) {
+      try {
+        const pendingOrder = {
+          id: orderId,
+          items,
+          total: pkrAmount,
+          customer,
+          status: 'Pending',
+          paymentMethod: 'Online Card (ZionPe)',
+          paymentStatus: 'Pending',
+          timestamp: new Date().toISOString()
+        };
+        await fetch(`${dbUrl}/orders/${orderId}.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(pendingOrder)
+        });
+      } catch (dbErr) {
+        console.error('Error creating pending order in Firebase:', dbErr);
+      }
+    }
+
     res.json({ checkout_url });
 
   } catch (err) {
@@ -157,45 +181,47 @@ app.post('/api/payment/zionpe/webhook', async (req, res) => {
     // Assuming the event structure has { event_type: 'payment.success', data: { order_id: '...' } }
     // We handle success cases to create the final confirmed order in Firebase
     const isSuccessEvent = event.event_type === 'payment.success' || event.status === 'success' || event.status === 'Paid';
-    const orderId = event.data?.order_id || event.order_id || event.metadata?.orderId;
+    const isFailedEvent = event.event_type === 'payment.failed' || event.event_type === 'payment_intent.payment_failed' || event.status === 'failed' || event.status === 'Declined';
+    const orderId = event.data?.order_id || event.order_id || event.metadata?.orderId || event.metadata?.order_id;
 
-    if (isSuccessEvent && orderId) {
+    if (orderId) {
       const dbUrl = process.env.FIREBASE_DB_URL;
       if (dbUrl) {
         try {
-          // Extract and parse the full order data from metadata (set during session creation)
-          const metadata = event.metadata || event.data?.metadata || {};
-          let items = [];
-          let customer = {};
-          let total = event.amount || event.data?.amount || 0;
-
-          try { items = JSON.parse(metadata.items || '[]'); } catch (_) { items = []; }
-          try { customer = JSON.parse(metadata.customer || '{}'); } catch (_) { customer = {}; }
-          if (metadata.total) total = parseFloat(metadata.total);
-
-          // Build the complete, confirmed order object
-          const confirmedOrder = {
-            id: orderId,
-            items,
-            total,
-            customer,
-            status: 'Processing',
-            paymentMethod: 'Online Card (ZionPe)',
-            paymentStatus: 'Paid',
-            timestamp: new Date().toISOString()
-          };
-
-          // Use PUT to create the full order document in Firebase
-          const firebaseRes = await fetch(`${dbUrl}/orders/${orderId}.json`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(confirmedOrder)
-          });
-
-          if (!firebaseRes.ok) {
-            console.error('Firebase DB create order error:', await firebaseRes.text());
-          } else {
-            console.log(`✅ Order ${orderId} successfully created in Firebase after ZionPe payment.`);
+          if (isSuccessEvent) {
+            const updates = {
+              status: 'Processing',
+              paymentStatus: 'Paid',
+              timestamp: new Date().toISOString()
+            };
+            const firebaseRes = await fetch(`${dbUrl}/orders/${orderId}.json`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(updates)
+            });
+            if (!firebaseRes.ok) {
+              console.error('Firebase DB update success error:', await firebaseRes.text());
+            } else {
+              console.log(`✅ Order ${orderId} successfully marked as Paid in Firebase.`);
+            }
+          } else if (isFailedEvent) {
+            const failureReason = event.data?.failure_reason || event.failure_reason || event.data?.message || 'Payment failed or declined';
+            const updates = {
+              status: 'Failed',
+              paymentStatus: 'Failed',
+              failure_reason: failureReason,
+              timestamp: new Date().toISOString()
+            };
+            const firebaseRes = await fetch(`${dbUrl}/orders/${orderId}.json`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(updates)
+            });
+            if (!firebaseRes.ok) {
+              console.error('Firebase DB update failure error:', await firebaseRes.text());
+            } else {
+              console.log(`❌ Order ${orderId} marked as Failed in Firebase. Reason: ${failureReason}`);
+            }
           }
         } catch (dbErr) {
           console.error('Error connecting to Firebase REST API:', dbErr);

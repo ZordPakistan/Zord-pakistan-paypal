@@ -71,7 +71,22 @@ function App() {
   const [siteContent, setSiteContent] = useState({ about: '', shipping: '' });
   const [footerContent, setFooterContent] = useState({});
   const [saveStatus, setSaveStatus] = useState('');
-  const [cart, setCart] = useState([]);
+  const [cart, setCart] = useState(() => {
+    try {
+      const saved = localStorage.getItem('zord_cart');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('zord_cart', JSON.stringify(cart));
+    } catch (e) {
+      // Ignore
+    }
+  }, [cart]);
   const [orders, setOrders] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [filterCategory, setFilterCategory] = useState(null);
@@ -97,6 +112,9 @@ function App() {
   const [trackError, setTrackError] = useState('');
   const [isTracking, setIsTracking] = useState(false);
   const STATUS_STEPS = ['Pending', 'Confirmed', 'Processing', 'Shipped', 'Out for Delivery', 'Delivered'];
+
+  // Admin Order Filter
+  const [adminOrderFilter, setAdminOrderFilter] = useState('All');
 
   // Search State
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -321,6 +339,7 @@ function App() {
       setView('checkout');
     } else if (path === '/order-success') {
       setView('order-success');
+      setCart([]); // Clear cart upon successful payment callback
     } else if (path === '/about') {
       setInfoPage({ title: 'About Us', content: "Founded with a passion for excellence, ZORD is dedicated to redefining the standards of premium footwear globally." });
     } else if (path === '/contact') {
@@ -1076,7 +1095,7 @@ function App() {
                 </div>
               </div>
               {customerInfo.payment === 'Online' ? (
-                <div style={{ marginTop: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ marginTop: '0.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <button
                     type="button"
                     onClick={handleZionPeCheckout}
@@ -1539,7 +1558,17 @@ function App() {
           </section>
 
           <section className="admin-section">
-            <h2>Order Management</h2>
+            <div className="section-header-admin" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2>Order Management</h2>
+              <select 
+                value={adminOrderFilter} 
+                onChange={(e) => setAdminOrderFilter(e.target.value)} 
+                className="status-select"
+              >
+                <option value="All">Valid Orders</option>
+                <option value="Failed">Failed Transactions</option>
+              </select>
+            </div>
             <div className="admin-table-container">
               <table className="admin-table">
                 <thead>
@@ -1554,11 +1583,13 @@ function App() {
                 </thead>
                 <tbody>
                   {(orders || []).filter(order => {
-                    // Show all COD orders
-                    if (order.paymentMethod === 'Cash on Delivery (COD)') return true;
-                    // Show online orders only if payment was confirmed
-                    if (order.paymentStatus === 'Paid') return true;
-                    // Hide any stale or incomplete online sessions
+                    if (adminOrderFilter === 'All') {
+                      // Show all COD orders and Paid online orders
+                      return order.paymentMethod === 'Cash on Delivery (COD)' || order.paymentStatus === 'Paid';
+                    }
+                    if (adminOrderFilter === 'Failed') {
+                      return order.paymentStatus === 'Failed';
+                    }
                     return false;
                   }).map(order => (
                     <tr key={order.id}>
@@ -1587,10 +1618,13 @@ function App() {
                           className="status-select"
                         >
                           <option value="Pending">Pending</option>
+                          <option value="Processing">Processing</option>
                           <option value="Shipped">Shipped</option>
                           <option value="Delivered">Delivered</option>
                           <option value="Cancelled">Cancelled</option>
+                          <option value="Failed">Failed</option>
                         </select>
+                        {order.paymentStatus === 'Failed' && <div style={{ color: 'red', fontSize: '0.75rem', marginTop: '4px' }}>Reason: {order.failure_reason || 'Unknown'}</div>}
                       </td>
                       <td>
                         <button className="btn-remove" onClick={() => deleteOrder(order.id)}>Delete</button>
