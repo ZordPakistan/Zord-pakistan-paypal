@@ -331,6 +331,7 @@ async function sendOrderEmails({ orderId, orderData, paymentMethod }) {
 app.post('/api/payment/zionpe/webhook', async (req, res) => {
   try {
     const event = req.body;
+    console.log('🔔 Incoming ZionPe Webhook Event:', event.event_type || event.type || event.status, '| Order:', event.data?.order_id || event.order_id);
     
     // Validate webhook securely
     const signature = req.headers['x-zionpe-signature'];
