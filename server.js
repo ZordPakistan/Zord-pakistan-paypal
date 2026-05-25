@@ -87,12 +87,13 @@ app.post('/api/payment/zionpe/create-session', async (req, res) => {
         address: customer?.address || ''
       },
       line_items,
-      // Lightweight metadata only — no large JSON blobs
+      // Pass all necessary order data in metadata
       metadata: {
         order_id: orderId,
-        items_summary: itemsSummary,
+        customer_email: customer?.email || '',
         customer_name: (customer?.name || '').substring(0, 50),
         customer_phone: (customer?.phone || '').substring(0, 20),
+        cart_items: JSON.stringify(items || []).substring(0, 500),
         total_pkr: pkrAmount
       }
     };
@@ -360,18 +361,27 @@ app.post('/api/payment/zionpe/webhook', async (req, res) => {
       }
     }
 
-    const isSuccessEvent = event.event_type === 'payment.success' || event.status === 'success' || event.status === 'Paid';
+    const isSuccessEvent = 
+      event.event_type === 'payment.success' || 
+      event.type === 'checkout.session.completed' ||
+      event.status === 'success' || 
+      event.status === 'Paid';
+
     const isFailedEvent = 
       event.event_type === 'payment.failed' || 
       event.event_type === 'payment_intent.payment_failed' || 
+      event.type === 'charge.failed' ||
       event.event_type === 'charge.failed' ||
       event.status === 'failed' || 
       event.status === 'Declined' || 
       event.status === 'declined' ||
       (event.event_type && typeof event.event_type === 'string' && (event.event_type.toLowerCase().includes('fail') || event.event_type.toLowerCase().includes('decline'))) ||
+      (event.type && typeof event.type === 'string' && (event.type.toLowerCase().includes('fail') || event.type.toLowerCase().includes('decline'))) ||
       (event.status && typeof event.status === 'string' && (event.status.toLowerCase().includes('fail') || event.status.toLowerCase().includes('decline')));
       
-    const orderId = event.data?.order_id || event.order_id || event.metadata?.orderId || event.metadata?.order_id;
+    // Extract metadata carefully from standard or Stripe-like payload
+    const metadata = event.data?.object?.metadata || event.metadata || event.data?.metadata || {};
+    const orderId = metadata.order_id || metadata.orderId || event.data?.order_id || event.order_id || event.data?.object?.client_reference_id;
 
     if (orderId) {
       const dbUrl = process.env.FIREBASE_DB_URL;
@@ -396,15 +406,40 @@ app.post('/api/payment/zionpe/webhook', async (req, res) => {
               // Fetch full order and send emails
               try {
                 const orderRes = await fetch(`${dbUrl}/orders/${orderId}.json`);
+                let orderData = null;
                 if (orderRes.ok) {
-                  const orderData = await orderRes.json();
-                  if (orderData) {
-                    await sendOrderEmails({
-                      orderId,
-                      orderData,
-                      paymentMethod: 'Online Card (ZionPe)'
-                    });
-                  }
+                  orderData = await orderRes.json();
+                }
+
+                // If DB fetch fails or is incomplete, reconstruct from metadata
+                if (!orderData || !orderData.customer) {
+                  console.log('Reconstructing orderData from metadata...');
+                  let parsedItems = [];
+                  try {
+                    parsedItems = JSON.parse(metadata.cart_items || '[]');
+                  } catch(e) {}
+                  
+                  orderData = {
+                    ...orderData,
+                    id: orderId,
+                    total: metadata.total_pkr || 0,
+                    paymentStatus: 'Paid',
+                    paymentMethod: 'Online Card (ZionPe)',
+                    customer: {
+                      name: metadata.customer_name || 'Customer',
+                      email: metadata.customer_email || '',
+                      phone: metadata.customer_phone || ''
+                    },
+                    items: parsedItems.length ? parsedItems : [{ name: 'Items from Webhook', price: metadata.total_pkr || 0, size: 'N/A' }]
+                  };
+                }
+
+                if (orderData) {
+                  await sendOrderEmails({
+                    orderId,
+                    orderData,
+                    paymentMethod: 'Online Card (ZionPe)'
+                  });
                 }
               } catch (emailErr) {
                 console.error('Error sending order emails:', emailErr);
@@ -431,11 +466,27 @@ app.post('/api/payment/zionpe/webhook', async (req, res) => {
               // Fetch full order to get customer details and amount for the alert email
               try {
                 const orderRes = await fetch(`${dbUrl}/orders/${orderId}.json`);
+                let orderData = null;
                 if (orderRes.ok) {
-                  const orderData = await orderRes.json();
-                  if (orderData) {
-                    await sendFailureAlertEmail({ orderId, orderData, failureReason });
-                  }
+                  orderData = await orderRes.json();
+                }
+
+                if (!orderData || !orderData.customer) {
+                  console.log('Reconstructing failed orderData from metadata...');
+                  orderData = {
+                    ...orderData,
+                    id: orderId,
+                    total: metadata.total_pkr || 0,
+                    customer: {
+                      name: metadata.customer_name || 'Customer',
+                      email: metadata.customer_email || '',
+                      phone: metadata.customer_phone || ''
+                    }
+                  };
+                }
+
+                if (orderData) {
+                  await sendFailureAlertEmail({ orderId, orderData, failureReason });
                 }
               } catch (err) {
                  console.error('Error sending failed payment email alert:', err);
