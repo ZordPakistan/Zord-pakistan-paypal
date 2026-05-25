@@ -332,6 +332,16 @@ async function sendOrderEmails({ orderId, orderData, paymentMethod }) {
 app.post('/api/payment/zionpe/webhook', async (req, res) => {
   try {
     const event = req.body;
+    
+    // --- DEBUGGING LOGS ADDED ---
+    console.log('===================================================');
+    console.log('🚨 WEBHOOK RECEIVED 🚨');
+    console.log('Event Type / Event_Type:', event.type || event.event_type || 'Unknown Type');
+    console.log('Event Status:', event.status || 'No Status');
+    console.log('Headers x-zionpe-signature:', req.headers['x-zionpe-signature'] || 'Missing');
+    console.log('Full Webhook Payload (req.body):', JSON.stringify(event, null, 2));
+    console.log('===================================================');
+
     console.log('🔔 Incoming ZionPe Webhook Event:', event.event_type || event.type || event.status, '| Order:', event.data?.order_id || event.order_id);
     
     // Validate webhook securely
@@ -341,6 +351,7 @@ app.post('/api/payment/zionpe/webhook', async (req, res) => {
     
     if (webhookSecret) {
       if (!signature) {
+        console.error('❌ Webhook failed: Missing signature. Make sure ZionPe sends this header.');
         return res.status(401).json({ success: false, message: 'Missing signature' });
       }
 
