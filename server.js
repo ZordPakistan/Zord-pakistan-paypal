@@ -80,6 +80,7 @@ app.post('/api/payment/zionpe/create-session', async (req, res) => {
       order_id: orderId,
       success_url: `${req.headers.origin || FRONTEND_URL}/order-success`,
       cancel_url: `${req.headers.origin || FRONTEND_URL}/cart`,
+      webhook_url: 'https://zord-pakistan-paypal1.vercel.app/api/payment/zionpe/webhook',
       customer: {
         name: customer?.name || 'Customer',
         email: customer?.email || 'customer@zordpakistan.shop',
