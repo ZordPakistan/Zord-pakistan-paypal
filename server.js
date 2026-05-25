@@ -351,7 +351,7 @@ app.post('/api/payment/zionpe/webhook', async (req, res) => {
     
     if (webhookSecret) {
       if (!signature) {
-        console.error('❌ Webhook failed: Missing signature. Make sure ZionPe sends this header.');
+        console.error('❌ Webhook rejected: 401 Missing signature. Make sure ZionPe sends this header.');
         return res.status(401).json({ success: false, message: 'Missing signature' });
       }
 
@@ -367,9 +367,11 @@ app.post('/api/payment/zionpe/webhook', async (req, res) => {
 
       // Compare signatures
       if (signature !== expectedSignature) {
-        console.error('Webhook signature verification failed.', { expectedSignature, signature });
+        console.error(`❌ Webhook rejected: 401 Invalid signature. Expected: ${expectedSignature}, Received: ${signature}`);
         return res.status(401).json({ success: false, message: 'Invalid signature' });
       }
+    } else {
+      console.log('⚠️ WARNING: ZIONPE_WEBHOOK_SECRET is not set. Skipping signature verification.');
     }
 
     const isSuccessEvent = 
@@ -513,7 +515,7 @@ app.post('/api/payment/zionpe/webhook', async (req, res) => {
     res.json({ received: true });
 
   } catch (err) {
-    console.error('Error handling ZionPe webhook:', err);
+    console.error('❌ Webhook rejected: 500 Internal Server Error handling ZionPe webhook:', err);
     return res.status(500).json({ success: false, message: err.message || 'Failed to handle webhook' });
   }
 });
