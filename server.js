@@ -122,7 +122,7 @@ app.post('/api/payment/zionpe/create-session', async (req, res) => {
     }
 
     // Save pending order to Firebase
-    const dbUrl = process.env.FIREBASE_DB_URL;
+    const dbUrl = process.env.FIREBASE_DB_URL || 'https://zord-pakistan-default-rtdb.firebaseio.com';
     if (dbUrl) {
       try {
         const pendingOrder = {
@@ -155,7 +155,10 @@ app.post('/api/payment/zionpe/create-session', async (req, res) => {
 
 // ─── Failed Payment Email Helper ─────────────────────────────────────────────
 async function sendFailureAlertEmail({ orderId, orderData, failureReason }) {
-  if (!process.env.RESEND_API_KEY) return;
+  if (!process.env.RESEND_API_KEY) {
+    console.log('⚠️ RESEND_API_KEY not set — skipping failure email.');
+    return;
+  }
   const resend = new Resend(process.env.RESEND_API_KEY);
   const adminEmail = process.env.ADMIN_EMAIL || 'zordofficialpk@gmail.com';
   const senderEmail = process.env.SENDER_EMAIL || 'orders@zordpakistan.shop';
@@ -181,15 +184,20 @@ async function sendFailureAlertEmail({ orderId, orderData, failureReason }) {
   </div>`;
 
   try {
-    const result = await resend.emails.send({
+    const { data, error } = await resend.emails.send({
       from: `Zord Alerts <${senderEmail}>`,
       to: adminEmail,
       subject: `❌ Payment Failed Alert #${orderId} — $${usdAmount} USD`,
       html
     });
-    console.log(`📧 Failed payment alert sent to ${adminEmail}`, result);
+    
+    if (error) {
+      console.error('❌ Resend API Error (Failed Alert):', error);
+    } else {
+      console.log(`📧 Failed payment alert sent to ${adminEmail}`, data);
+    }
   } catch (err) {
-    console.error('Failed payment alert email error:', err);
+    console.error('Failed payment alert email exception:', err);
   }
 }
 
@@ -302,29 +310,37 @@ async function sendOrderEmails({ orderId, orderData, paymentMethod }) {
   // Send Customer Email (only if we have their email)
   if (customerEmail) {
     try {
-      const customerResult = await resend.emails.send({
+      const { data, error } = await resend.emails.send({
         from: `Zord Pakistan <${senderEmail}>`,
         to: customerEmail,
         subject: `Order Confirmed — #${orderId}`,
         html: customerHtml
       });
-      console.log(`📧 Customer email sent to ${customerEmail}`, customerResult);
+      if (error) {
+        console.error('❌ Resend API Error (Customer Confirm):', error);
+      } else {
+        console.log(`📧 Customer email sent to ${customerEmail}`, data);
+      }
     } catch (err) {
-      console.error('Customer email failed:', err);
+      console.error('Customer email exception:', err);
     }
   }
 
   // Send Admin Email
   try {
-    const adminResult = await resend.emails.send({
+    const { data, error } = await resend.emails.send({
       from: `Zord Orders <${senderEmail}>`,
       to: adminEmail,
       subject: `${adminBannerEmoji} ${adminBannerLabel} #${orderId} — PKR ${orderData.total}`,
       html: adminHtml
     });
-    console.log(`📧 Admin email sent to ${adminEmail}`, adminResult);
+    if (error) {
+      console.error('❌ Resend API Error (Admin Confirm):', error);
+    } else {
+      console.log(`📧 Admin email sent to ${adminEmail}`, data);
+    }
   } catch (err) {
-    console.error('Admin email failed:', err);
+    console.error('Admin email exception:', err);
   }
 }
 
@@ -397,7 +413,7 @@ app.post('/api/payment/zionpe/webhook', async (req, res) => {
     const orderId = metadata.order_id || metadata.orderId || event.data?.order_id || event.order_id || event.data?.object?.client_reference_id;
 
     if (orderId) {
-      const dbUrl = process.env.FIREBASE_DB_URL;
+      const dbUrl = process.env.FIREBASE_DB_URL || 'https://zord-pakistan-default-rtdb.firebaseio.com';
       if (dbUrl) {
         try {
           if (isSuccessEvent) {
@@ -509,7 +525,11 @@ app.post('/api/payment/zionpe/webhook', async (req, res) => {
         } catch (dbErr) {
           console.error('Error connecting to Firebase REST API:', dbErr);
         }
+      } else {
+        console.error('❌ FIREBASE_DB_URL is not configured. Skipping webhook database and email actions.');
       }
+    } else {
+      console.error('⚠️ Could not extract orderId from webhook metadata.');
     }
 
     res.json({ received: true });
